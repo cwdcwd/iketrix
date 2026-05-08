@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(cuid())
+  clerkId         String    @unique
+  email           String    @unique
+  name            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tasks           Task[]
+  sources         Source[]
+  overrides       ClassificationOverride[]
+}
+
+model Source {
+  id              String    @id @default(cuid())
+  type            String    // "github", "jira", "linear", etc.
+  name            String    // e.g., "owner/repo"
+  accessToken     String    // encrypted OAuth token
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks           Task[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, type, name])
+}
+
+model Task {
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  sourceId        String?
+  source          Source?   @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  externalId      String?   // GitHub issue number, etc.
+  externalUrl     String?
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quadrant        String?   // "do", "schedule", "delegate", "delete"
+  status          String    @default("active") // "active", "delegated", "completed", "deleted"
+  classification  TaskClassification?
+  overrides       ClassificationOverride[]
+  delegatedTo     String?   // email or identifier of delegatee
+  delegatedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([sourceId, externalId])
+}
+
+model TaskClassification {
+  id              String    @id @default(cuid())
+  taskId          String    @unique
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  quadrant        String    // "do", "schedule", "delegate", "delete"
+  reasoning       String    // LLM explanation
+  confidence      Float     // 0-1 score
+  model           String    // which LLM model was used
+  createdAt       DateTime  @default(now())
+}
+
+model ClassificationOverride {
+  id              String    @id @default(cuid())
+  taskId          String
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromQuadrant    String
+  toQuadrant      String
+  createdAt       DateTime  @default(now())
+}
