@@ -83,7 +83,26 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-<!-- Filled by roadmap creation -->
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| AUTH-01 | Phase 1: Foundation | Not started |
+| AUTH-02 | Phase 2: Import & Classification | Not started |
+| AUTH-03 | Phase 4: Delegation & Viral Loop | Not started |
+| IMPORT-01 | Phase 2: Import & Classification | Not started |
+| IMPORT-02 | Phase 2: Import & Classification | Not started |
+| IMPORT-03 | Phase 1: Foundation | Not started |
+| LLM-01 | Phase 2: Import & Classification | Not started |
+| LLM-02 | Phase 2: Import & Classification | Not started |
+| LLM-03 | Phase 2: Import & Classification | Not started |
+| LLM-04 | Phase 2: Import & Classification | Not started |
+| UI-01 | Phase 3: Matrix UI | Not started |
+| UI-02 | Phase 3: Matrix UI | Not started |
+| UI-03 | Phase 3: Matrix UI | Not started |
+| UI-04 | Phase 3: Matrix UI | Not started |
+| DEL-01 | Phase 4: Delegation & Viral Loop | Not started |
+| DEL-02 | Phase 4: Delegation & Viral Loop | Not started |
+| DEL-03 | Phase 4: Delegation & Viral Loop | Not started |
+| DEL-04 | Phase 4: Delegation & Viral Loop | Not started |
+| INFRA-01 | Phase 1: Foundation | Not started |
+| INFRA-02 | Phase 1: Foundation | Not started |
+| INFRA-03 | Phase 1: Foundation | Not started |
