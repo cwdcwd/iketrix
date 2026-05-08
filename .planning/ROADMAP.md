@@ -26,11 +26,11 @@ Build an LLM-powered Eisenhower Matrix PWA from the ground up. Start with infras
   2. Prisma Postgres database is connected with initial schema (users, tasks, sources tables)
   3. App is installable as a PWA on mobile
   4. Input adapter interface is defined (pluggable architecture foundation)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Scaffold Next.js + Prisma schema + Clerk auth
+- [ ] 01-02-PLAN.md — PWA config + input adapter interface
 
 ### Phase 2: Import & Classification
 **Goal**: User connects GitHub, imports issues, and LLM classifies each into Eisenhower quadrants with reasoning — the core intelligence loop
@@ -41,7 +41,7 @@ Plans:
   2. Each task is classified into Do/Schedule/Delegate/Delete with visible reasoning
   3. Re-syncing GitHub pulls new issues and updates closed ones
   4. User correction history is stored and available as LLM context for future classifications
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 02-01: TBD
@@ -56,7 +56,7 @@ Plans:
   2. Each quadrant expands into a focused list view
   3. User can drag or move tasks between quadrants (overriding LLM classification)
   4. Overrides are persisted and fed back to LLM memory
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 03-01: TBD
@@ -71,7 +71,7 @@ Plans:
   3. GitHub delegatees get assigned on the original GitHub issue
   4. Existing Iketrix users see delegated tasks appear on their own board
   5. Delegated tasks show delegation status on the delegator's board
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 04-01: TBD
@@ -84,7 +84,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/2 | Not started | - |
 | 2. Import & Classification | 0/TBD | Not started | - |
 | 3. Matrix UI | 0/TBD | Not started | - |
 | 4. Delegation & Viral Loop | 0/TBD | Not started | - |
