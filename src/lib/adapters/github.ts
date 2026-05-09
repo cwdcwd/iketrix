@@ -12,7 +12,8 @@ export class GitHubAdapter implements InputAdapter {
   async validateConnection(connection: SourceConnection): Promise<boolean> {
     try {
       const octokit = new Octokit({ auth: connection.accessToken });
-      await octokit.rest.users.getAuthenticated();
+      const [owner, repo] = connection.name.split("/");
+      await octokit.rest.repos.get({ owner, repo });
       return true;
     } catch {
       return false;

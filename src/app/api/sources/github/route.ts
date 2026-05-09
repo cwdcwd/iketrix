@@ -5,15 +5,29 @@ import { GitHubAdapter } from "@/lib/adapters/github";
 
 const adapter = new GitHubAdapter();
 
-// POST /api/sources/github — connect a GitHub repo
+// POST /api/sources/github — connect a GitHub repo (uses user's OAuth token)
 export async function POST(req: NextRequest) {
   const user = await getOrCreateUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { repo, accessToken } = await req.json();
-  if (!repo || !accessToken) {
-    return NextResponse.json({ error: "repo and accessToken required" }, { status: 400 });
+  const { repo } = await req.json();
+  if (!repo) {
+    return NextResponse.json({ error: "repo required" }, { status: 400 });
   }
+
+  // Get the user's stored GitHub OAuth token
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { githubToken: true },
+  });
+  if (!dbUser?.githubToken) {
+    return NextResponse.json(
+      { error: "GitHub not connected. Please connect GitHub first." },
+      { status: 400 }
+    );
+  }
+
+  const accessToken = dbUser.githubToken;
 
   const valid = await adapter.validateConnection({
     id: "",
@@ -22,7 +36,7 @@ export async function POST(req: NextRequest) {
     accessToken,
   });
   if (!valid) {
-    return NextResponse.json({ error: "Invalid GitHub credentials" }, { status: 400 });
+    return NextResponse.json({ error: "Cannot access this repository" }, { status: 400 });
   }
 
   const source = await prisma.source.upsert({

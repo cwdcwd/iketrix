@@ -13,6 +13,7 @@ model User {
   clerkId         String    @unique
   email           String    @unique
   name            String?
+  githubToken     String?   // GitHub App OAuth user access token
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   tasks           Task[]

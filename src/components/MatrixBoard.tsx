@@ -35,8 +35,10 @@ export default function MatrixBoard() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [expandedQuadrant, setExpandedQuadrant] = useState<QuadrantKey | null>(null);
-  const [showConnect, setShowConnect] = useState(false);
-  const [connectForm, setConnectForm] = useState({ repo: "", accessToken: "" });
+  const [showRepoPicker, setShowRepoPicker] = useState(false);
+  const [availableRepos, setAvailableRepos] = useState<Array<{ fullName: string; openIssuesCount: number }>>([])
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [githubConnected, setGithubConnected] = useState(false);
   const [delegateModal, setDelegateModal] = useState<{ task: Task; type: string; identifier: string } | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -57,20 +59,47 @@ export default function MatrixBoard() {
     }
   }, []);
 
+  const checkGitHubConnection = useCallback(async () => {
+    const res = await fetch("/api/sources/github/repos");
+    if (res.ok) {
+      const data = await res.json();
+      setGithubConnected(data.repos && data.repos.length > 0);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTasks();
     fetchSources();
-  }, [fetchTasks, fetchSources]);
+    checkGitHubConnection();
+  }, [fetchTasks, fetchSources, checkGitHubConnection]);
 
-  const connectGitHub = async () => {
+  const openRepoPicker = async () => {
+    setLoadingRepos(true);
+    setShowRepoPicker(true);
+    const res = await fetch("/api/sources/github/repos");
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.repos || data.repos.length === 0) {
+        // Not connected — redirect to GitHub OAuth
+        setShowRepoPicker(false);
+        setLoadingRepos(false);
+        window.location.href = "/api/auth/github";
+        return;
+      }
+      setAvailableRepos(data.repos);
+      setGithubConnected(true);
+    }
+    setLoadingRepos(false);
+  };
+
+  const connectRepo = async (fullName: string) => {
     const res = await fetch("/api/sources/github", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(connectForm),
+      body: JSON.stringify({ repo: fullName }),
     });
     if (res.ok) {
-      setShowConnect(false);
-      setConnectForm({ repo: "", accessToken: "" });
+      setShowRepoPicker(false);
       fetchSources();
     }
   };
@@ -172,50 +201,50 @@ export default function MatrixBoard() {
             </button>
           ))}
           <button
-            onClick={() => setShowConnect(true)}
+            onClick={openRepoPicker}
             className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-full cursor-pointer"
           >
-            + Connect GitHub
+            {githubConnected ? "+ Add Repo" : "Connect GitHub"}
           </button>
         </div>
       </div>
 
-      {/* Connect Modal */}
-      {showConnect && (
+      {/* Repo Picker Modal */}
+      {showRepoPicker && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="font-semibold mb-4">Connect GitHub Repository</h3>
-            <input
-              placeholder="owner/repo"
-              value={connectForm.repo}
-              onChange={(e) =>
-                setConnectForm((f) => ({ ...f, repo: e.target.value }))
-              }
-              className="w-full border rounded px-3 py-2 mb-3 text-sm"
-            />
-            <input
-              placeholder="GitHub Personal Access Token"
-              type="password"
-              value={connectForm.accessToken}
-              onChange={(e) =>
-                setConnectForm((f) => ({ ...f, accessToken: e.target.value }))
-              }
-              className="w-full border rounded px-3 py-2 mb-4 text-sm"
-            />
-            <div className="flex gap-2 justify-end">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold">Select a Repository</h3>
               <button
-                onClick={() => setShowConnect(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 cursor-pointer"
+                onClick={() => setShowRepoPicker(false)}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer text-lg"
               >
-                Cancel
-              </button>
-              <button
-                onClick={connectGitHub}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
-              >
-                Connect
+                ✕
               </button>
             </div>
+            {loadingRepos ? (
+              <p className="text-sm text-gray-500">Loading repositories...</p>
+            ) : (
+              <div className="overflow-y-auto flex-1 space-y-1">
+                {availableRepos
+                  .filter((r) => !sources.some((s) => s.name === r.fullName))
+                  .map((repo) => (
+                    <button
+                      key={repo.fullName}
+                      onClick={() => connectRepo(repo.fullName)}
+                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-sm cursor-pointer flex justify-between items-center"
+                    >
+                      <span className="font-medium">{repo.fullName}</span>
+                      <span className="text-xs text-gray-400">
+                        {repo.openIssuesCount} issues
+                      </span>
+                    </button>
+                  ))}
+                {availableRepos.filter((r) => !sources.some((s) => s.name === r.fullName)).length === 0 && (
+                  <p className="text-sm text-gray-400 italic">All accessible repos already connected</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
