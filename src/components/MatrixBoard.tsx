@@ -42,6 +42,39 @@ export default function MatrixBoard() {
   const [githubConnected, setGithubConnected] = useState(false);
   const [delegateModal, setDelegateModal] = useState<{ task: Task; type: string; identifier: string } | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverQuadrant, setDragOverQuadrant] = useState<QuadrantKey | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.setData("text/plain", taskId);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedTaskId(taskId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, quadrant: QuadrantKey) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverQuadrant(quadrant);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverQuadrant(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, quadrant: QuadrantKey) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("text/plain");
+    if (taskId) {
+      moveTask(taskId, quadrant);
+    }
+    setDraggedTaskId(null);
+    setDragOverQuadrant(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverQuadrant(null);
+  };
 
   const fetchTasks = useCallback(async () => {
     const res = await fetch("/api/tasks");
@@ -407,7 +440,10 @@ export default function MatrixBoard() {
             return (
               <div
                 key={key}
-                className={`border-2 ${q.border} ${q.bg} rounded-lg p-3 min-h-[180px] flex flex-col`}
+                className={`border-2 ${q.border} ${q.bg} rounded-lg p-3 min-h-[180px] flex flex-col transition-all ${dragOverQuadrant === key ? "ring-2 ring-offset-2 ring-blue-500 dark:ring-offset-gray-900 scale-[1.02]" : ""}`}
+                onDragOver={(e) => handleDragOver(e, key)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, key)}
               >
                 <div
                   className="flex justify-between items-center mb-2 cursor-pointer"
@@ -427,7 +463,10 @@ export default function MatrixBoard() {
                   {qTasks.slice(0, 5).map((task) => (
                     <div
                       key={task.id}
-                      className="bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs cursor-pointer hover:shadow-md transition-shadow dark:text-gray-200"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, task.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs cursor-grab hover:shadow-md transition-all dark:text-gray-200 active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                       onClick={() => setSelectedTask(task)}
                     >
                       <p className="font-medium truncate">{task.title}</p>
@@ -477,7 +516,10 @@ export default function MatrixBoard() {
               .map((task) => (
                 <div
                   key={task.id}
-                  className="bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, task.id)}
+                  onDragEnd={handleDragEnd}
+                  className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                 >
                   <p
                     className="font-medium truncate flex-1 cursor-pointer hover:text-orange-700 dark:hover:text-orange-400"
