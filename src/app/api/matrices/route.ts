@@ -36,5 +36,21 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ matrix }, { status: 201 });
+  // Adopt any orphaned tasks and sources (no matrixId) into this matrix
+  const [adoptedTasks, adoptedSources] = await Promise.all([
+    prisma.task.updateMany({
+      where: { userId: user.id, matrixId: null },
+      data: { matrixId: matrix.id },
+    }),
+    prisma.source.updateMany({
+      where: { userId: user.id, matrixId: null },
+      data: { matrixId: matrix.id },
+    }),
+  ]);
+
+  if (adoptedTasks.count > 0 || adoptedSources.count > 0) {
+    console.log(`[matrices] Adopted ${adoptedTasks.count} tasks and ${adoptedSources.count} sources into "${matrix.name}"`);
+  }
+
+  return NextResponse.json({ matrix, adopted: { tasks: adoptedTasks.count, sources: adoptedSources.count } }, { status: 201 });
 }

@@ -398,7 +398,7 @@ export default function MatrixBoard() {
       )}
 
       {/* No Matrix Prompt */}
-      {matrices.length === 0 && !loading && (
+      {matrices.length === 0 && !loading && tasks.length === 0 && (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500">
           <p className="mb-3 text-lg">No matrices yet</p>
           <button
