@@ -14,6 +14,7 @@ model User {
   email           String    @unique
   name            String?
   githubToken     String?   // GitHub App OAuth user access token
+  githubInstallationId String? // GitHub App installation ID
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   tasks           Task[]

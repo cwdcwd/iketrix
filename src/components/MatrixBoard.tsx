@@ -21,10 +21,10 @@ type Source = {
 };
 
 const QUADRANTS = {
-  do: { label: "🔥 Do", subtitle: "Important & Urgent", color: "red", bg: "bg-red-50", border: "border-red-300", text: "text-red-700" },
-  schedule: { label: "📅 Schedule", subtitle: "Important & Not Urgent", color: "blue", bg: "bg-blue-50", border: "border-blue-300", text: "text-blue-700" },
-  delegate: { label: "👋 Delegate", subtitle: "Not Important & Urgent", color: "yellow", bg: "bg-yellow-50", border: "border-yellow-300", text: "text-yellow-700" },
-  delete: { label: "🗑️ Delete", subtitle: "Not Important & Not Urgent", color: "gray", bg: "bg-gray-50", border: "border-gray-300", text: "text-gray-600" },
+  do: { label: "🔥 Do", subtitle: "Important & Urgent", color: "red", bg: "bg-red-50 dark:bg-red-950/40", border: "border-red-300 dark:border-red-800", text: "text-red-700 dark:text-red-400" },
+  schedule: { label: "📅 Schedule", subtitle: "Important & Not Urgent", color: "blue", bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-blue-300 dark:border-blue-800", text: "text-blue-700 dark:text-blue-400" },
+  delegate: { label: "👋 Delegate", subtitle: "Not Important & Urgent", color: "yellow", bg: "bg-yellow-50 dark:bg-yellow-950/40", border: "border-yellow-300 dark:border-yellow-800", text: "text-yellow-700 dark:text-yellow-400" },
+  delete: { label: "🗑️ Delete", subtitle: "Not Important & Not Urgent", color: "gray", bg: "bg-gray-50 dark:bg-gray-800/60", border: "border-gray-300 dark:border-gray-700", text: "text-gray-600 dark:text-gray-400" },
 } as const;
 
 type QuadrantKey = keyof typeof QUADRANTS;
@@ -38,6 +38,7 @@ export default function MatrixBoard() {
   const [showRepoPicker, setShowRepoPicker] = useState(false);
   const [availableRepos, setAvailableRepos] = useState<Array<{ fullName: string; openIssuesCount: number }>>([])
   const [loadingRepos, setLoadingRepos] = useState(false);
+  const [repoFilter, setRepoFilter] = useState("");
   const [githubConnected, setGithubConnected] = useState(false);
   const [delegateModal, setDelegateModal] = useState<{ task: Task; type: string; identifier: string } | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -60,7 +61,7 @@ export default function MatrixBoard() {
   }, []);
 
   const checkGitHubConnection = useCallback(async () => {
-    const res = await fetch("/api/sources/github/repos");
+    const res = await fetch("/api/sources/github/repos?page=1");
     if (res.ok) {
       const data = await res.json();
       setGithubConnected(data.repos && data.repos.length > 0);
@@ -73,9 +74,8 @@ export default function MatrixBoard() {
     checkGitHubConnection();
   }, [fetchTasks, fetchSources, checkGitHubConnection]);
 
-  const openRepoPicker = async () => {
+  const fetchAllRepos = async () => {
     setLoadingRepos(true);
-    setShowRepoPicker(true);
     const res = await fetch("/api/sources/github/repos");
     if (res.ok) {
       const data = await res.json();
@@ -90,6 +90,13 @@ export default function MatrixBoard() {
       setGithubConnected(true);
     }
     setLoadingRepos(false);
+  };
+
+  const openRepoPicker = () => {
+    setShowRepoPicker(true);
+    setAvailableRepos([]);
+    setRepoFilter("");
+    fetchAllRepos();
   };
 
   const connectRepo = async (fullName: string) => {
@@ -144,7 +151,7 @@ export default function MatrixBoard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-gray-500">Loading your matrix...</p>
+        <p className="text-gray-500 dark:text-gray-400">Loading your matrix...</p>
       </div>
     );
   }
@@ -157,15 +164,15 @@ export default function MatrixBoard() {
       <div className="p-4 max-w-2xl mx-auto">
         <button
           onClick={() => setExpandedQuadrant(null)}
-          className="mb-4 text-sm text-gray-500 hover:text-gray-700 cursor-pointer"
+          className="mb-4 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer"
         >
           ← Back to matrix
         </button>
         <h2 className={`text-2xl font-bold ${q.text} mb-1`}>{q.label}</h2>
-        <p className="text-sm text-gray-500 mb-4">{q.subtitle}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{q.subtitle}</p>
         <div className="space-y-3">
           {qTasks.length === 0 && (
-            <p className="text-gray-400 italic">No tasks in this quadrant</p>
+            <p className="text-gray-400 dark:text-gray-500 italic">No tasks in this quadrant</p>
           )}
           {qTasks.map((task) => (
             <TaskCard
@@ -188,14 +195,14 @@ export default function MatrixBoard() {
     <div className="p-4 max-w-4xl mx-auto">
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="text-xl font-bold">Your Matrix</h1>
+        <h1 className="text-xl font-bold dark:text-white">Your Matrix</h1>
         <div className="flex gap-2 flex-wrap">
           {sources.map((s) => (
             <button
               key={s.id}
               onClick={() => syncSource(s.id)}
               disabled={syncing}
-              className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50"
+              className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-full cursor-pointer disabled:opacity-50"
             >
               {syncing ? "Syncing..." : `⟳ ${s.name}`}
             </button>
@@ -212,36 +219,51 @@ export default function MatrixBoard() {
       {/* Repo Picker Modal */}
       {showRepoPicker && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold">Select a Repository</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold dark:text-white">Select a Repository</h3>
               <button
                 onClick={() => setShowRepoPicker(false)}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer text-lg"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer text-lg"
               >
                 ✕
               </button>
             </div>
-            {loadingRepos ? (
-              <p className="text-sm text-gray-500">Loading repositories...</p>
+            <input
+              type="text"
+              placeholder="Filter repos..."
+              value={repoFilter}
+              onChange={(e) => setRepoFilter(e.target.value)}
+              autoFocus
+              className="border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {loadingRepos && availableRepos.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Loading repositories...</p>
             ) : (
               <div className="overflow-y-auto flex-1 space-y-1">
                 {availableRepos
                   .filter((r) => !sources.some((s) => s.name === r.fullName))
+                  .filter((r) => !repoFilter || r.fullName.toLowerCase().includes(repoFilter.toLowerCase()))
+                  .sort((a, b) => a.fullName.localeCompare(b.fullName))
                   .map((repo) => (
                     <button
                       key={repo.fullName}
                       onClick={() => connectRepo(repo.fullName)}
-                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-sm cursor-pointer flex justify-between items-center"
+                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm cursor-pointer flex justify-between items-center"
                     >
-                      <span className="font-medium">{repo.fullName}</span>
-                      <span className="text-xs text-gray-400">
+                      <span className="font-medium dark:text-white">{repo.fullName}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {repo.openIssuesCount} issues
                       </span>
                     </button>
                   ))}
-                {availableRepos.filter((r) => !sources.some((s) => s.name === r.fullName)).length === 0 && (
-                  <p className="text-sm text-gray-400 italic">All accessible repos already connected</p>
+                {availableRepos
+                  .filter((r) => !sources.some((s) => s.name === r.fullName))
+                  .filter((r) => !repoFilter || r.fullName.toLowerCase().includes(repoFilter.toLowerCase()))
+                  .length === 0 && !loadingRepos && (
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+                    {repoFilter ? "No matching repos" : "All accessible repos already connected"}
+                  </p>
                 )}
               </div>
             )}
@@ -252,8 +274,8 @@ export default function MatrixBoard() {
       {/* Delegate Modal */}
       {delegateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="font-semibold mb-2">Delegate Task</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="font-semibold mb-3 dark:text-white">Delegate Task</h3>
             <p className="text-sm text-gray-500 mb-4 truncate">
               {delegateModal.task.title}
             </p>
@@ -295,12 +317,12 @@ export default function MatrixBoard() {
                   m && { ...m, identifier: e.target.value }
                 )
               }
-              className="w-full border rounded px-3 py-2 mb-4 text-sm"
+              className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 mb-4 text-sm"
             />
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setDelegateModal(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 cursor-pointer"
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -319,27 +341,27 @@ export default function MatrixBoard() {
       {/* Task Detail Modal */}
       {selectedTask && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
-              <h3 className="font-semibold pr-4">{selectedTask.title}</h3>
+              <h3 className="font-semibold pr-4 dark:text-white">{selectedTask.title}</h3>
               <button
                 onClick={() => setSelectedTask(null)}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer text-lg"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer text-lg"
               >
                 ✕
               </button>
             </div>
             {selectedTask.description && (
-              <p className="text-sm text-gray-600 mb-3 whitespace-pre-wrap">
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 whitespace-pre-wrap">
                 {selectedTask.description}
               </p>
             )}
             {selectedTask.classification && (
-              <div className="bg-gray-50 rounded p-3 mb-3">
-                <p className="text-xs font-medium text-gray-500 mb-1">
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded p-3 mb-3">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                   AI Reasoning ({Math.round(selectedTask.classification.confidence * 100)}% confident)
                 </p>
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
                   {selectedTask.classification.reasoning}
                 </p>
               </div>
@@ -381,9 +403,9 @@ export default function MatrixBoard() {
                     <h2 className={`font-semibold ${q.text} text-sm`}>
                       {q.label}
                     </h2>
-                    <p className="text-xs text-gray-400">{q.subtitle}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{q.subtitle}</p>
                   </div>
-                  <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
                     {qTasks.length} {qTasks.length === 1 ? "task" : "tasks"} →
                   </span>
                 </div>
@@ -391,7 +413,7 @@ export default function MatrixBoard() {
                   {qTasks.slice(0, 5).map((task) => (
                     <div
                       key={task.id}
-                      className="bg-white rounded p-2 shadow-sm text-xs cursor-pointer hover:shadow-md transition-shadow"
+                      className="bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs cursor-pointer hover:shadow-md transition-shadow dark:text-gray-200"
                       onClick={() => setSelectedTask(task)}
                     >
                       <p className="font-medium truncate">{task.title}</p>
@@ -404,7 +426,7 @@ export default function MatrixBoard() {
                   ))}
                   {qTasks.length > 5 && (
                     <p
-                      className="text-xs text-gray-400 cursor-pointer hover:text-gray-600"
+                      className="text-xs text-gray-400 dark:text-gray-500 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300"
                       onClick={() => setExpandedQuadrant(key)}
                     >
                       +{qTasks.length - 5} more
@@ -418,7 +440,7 @@ export default function MatrixBoard() {
       </div>
 
       {tasks.length === 0 && (
-        <div className="text-center mt-8 text-gray-400">
+        <div className="text-center mt-8 text-gray-400 dark:text-gray-500">
           <p className="mb-2">No tasks yet</p>
           <p className="text-sm">
             Connect a GitHub repo to import issues into your Eisenhower Matrix
@@ -447,12 +469,12 @@ function TaskCard({
   ).filter((q) => q !== currentQuadrant);
 
   return (
-    <div className="bg-white border rounded-lg p-3 shadow-sm">
+    <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg p-3 shadow-sm dark:shadow-gray-900/30">
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(task)}>
-          <p className="font-medium text-sm">{task.title}</p>
+          <p className="font-medium text-sm dark:text-white">{task.title}</p>
           {task.description && (
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
               {task.description}
             </p>
           )}
@@ -488,7 +510,7 @@ function TaskCard({
           <button
             key={q}
             onClick={() => onMove(task.id, q)}
-            className="text-[10px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 cursor-pointer"
+            className="text-[10px] px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300 cursor-pointer"
           >
             → {QUADRANTS[q].label}
           </button>

@@ -1,35 +1,25 @@
-import { NextResponse } from "next/server";
-import { randomBytes } from "crypto";
+import { NextRequest, NextResponse } from "next/server";
 
-// GET /api/auth/github — redirect user to GitHub OAuth authorization page
-export async function GET() {
-  const clientId = process.env.GITHUB_APP_CLIENT_ID;
-  if (!clientId) {
+function getBaseUrl(req: NextRequest): string {
+  const host = req.headers.get("host") || "localhost:3000";
+  const proto = req.headers.get("x-forwarded-proto") || "http";
+  return `${proto}://${host}`;
+}
+
+// GET /api/auth/github — redirect user to GitHub App installation page
+export async function GET(req: NextRequest) {
+  const appSlug = process.env.GITHUB_APP_SLUG;
+  if (!appSlug) {
     return NextResponse.json(
-      { error: "GitHub App not configured" },
+      { error: "GitHub App not configured (missing GITHUB_APP_SLUG)" },
       { status: 500 }
     );
   }
 
-  const state = randomBytes(20).toString("hex");
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const redirectUri = `${appUrl}/api/auth/github/callback`;
+  const baseUrl = getBaseUrl(req);
+  // Redirect to GitHub App install page — GitHub will redirect back with
+  // installation_id + code to our setup URL configured in the App settings
+  const url = `https://github.com/apps/${appSlug}/installations/new`;
 
-  const url = new URL("https://github.com/login/oauth/authorize");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("scope", "repo");
-
-  const response = NextResponse.redirect(url.toString());
-  response.cookies.set("github_oauth_state", state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 600, // 10 minutes
-    path: "/",
-  });
-
-  return response;
+  return NextResponse.redirect(url);
 }
