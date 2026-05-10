@@ -20,6 +20,13 @@ type Source = {
   name: string;
 };
 
+type Matrix = {
+  id: string;
+  name: string;
+  description: string | null;
+  _count: { tasks: number; sources: number };
+};
+
 const QUADRANTS = {
   do: { label: "🔥 Do", subtitle: "Important & Urgent", color: "red", bg: "bg-red-50 dark:bg-red-950/40", border: "border-red-300 dark:border-red-800", text: "text-red-700 dark:text-red-400" },
   schedule: { label: "📅 Schedule", subtitle: "Important & Not Urgent", color: "blue", bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-blue-300 dark:border-blue-800", text: "text-blue-700 dark:text-blue-400" },
@@ -32,6 +39,8 @@ type QuadrantKey = keyof typeof QUADRANTS;
 export default function MatrixBoard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [matrices, setMatrices] = useState<Matrix[]>([]);
+  const [activeMatrixId, setActiveMatrixId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [expandedQuadrant, setExpandedQuadrant] = useState<QuadrantKey | null>(null);
@@ -44,6 +53,8 @@ export default function MatrixBoard() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverQuadrant, setDragOverQuadrant] = useState<QuadrantKey | null>(null);
+  const [showMatrixModal, setShowMatrixModal] = useState<{ mode: "create" | "edit"; name: string; description: string; id?: string } | null>(null);
+  const [showMatrixMenu, setShowMatrixMenu] = useState(false);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/plain", taskId);
@@ -76,22 +87,69 @@ export default function MatrixBoard() {
     setDragOverQuadrant(null);
   };
 
+  // --- Matrix CRUD ---
+  const fetchMatrices = useCallback(async () => {
+    const res = await fetch("/api/matrices");
+    if (res.ok) {
+      const data = await res.json();
+      setMatrices(data.matrices);
+      // Auto-select first matrix if none selected
+      if (!activeMatrixId && data.matrices.length > 0) {
+        setActiveMatrixId(data.matrices[0].id);
+      }
+    }
+  }, [activeMatrixId]);
+
+  const createMatrix = async (name: string, description: string) => {
+    const res = await fetch("/api/matrices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description: description || null }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setActiveMatrixId(data.matrix.id);
+      await fetchMatrices();
+    }
+    setShowMatrixModal(null);
+  };
+
+  const updateMatrix = async (id: string, name: string, description: string) => {
+    await fetch(`/api/matrices/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description: description || null }),
+    });
+    await fetchMatrices();
+    setShowMatrixModal(null);
+  };
+
+  const deleteMatrix = async (id: string) => {
+    await fetch(`/api/matrices/${id}`, { method: "DELETE" });
+    if (activeMatrixId === id) {
+      setActiveMatrixId(null);
+    }
+    await fetchMatrices();
+  };
+
   const fetchTasks = useCallback(async () => {
-    const res = await fetch("/api/tasks");
+    const params = activeMatrixId ? `?matrixId=${activeMatrixId}` : "";
+    const res = await fetch(`/api/tasks${params}`);
     if (res.ok) {
       const data = await res.json();
       setTasks(data.tasks);
     }
     setLoading(false);
-  }, []);
+  }, [activeMatrixId]);
 
   const fetchSources = useCallback(async () => {
-    const res = await fetch("/api/sources/github");
+    const params = activeMatrixId ? `?matrixId=${activeMatrixId}` : "";
+    const res = await fetch(`/api/sources/github${params}`);
     if (res.ok) {
       const data = await res.json();
       setSources(data.sources);
     }
-  }, []);
+  }, [activeMatrixId]);
 
   const checkGitHubConnection = useCallback(async () => {
     const res = await fetch("/api/sources/github/repos?page=1");
@@ -102,10 +160,14 @@ export default function MatrixBoard() {
   }, []);
 
   useEffect(() => {
+    fetchMatrices();
+  }, [fetchMatrices]);
+
+  useEffect(() => {
     fetchTasks();
     fetchSources();
     checkGitHubConnection();
-  }, [fetchTasks, fetchSources, checkGitHubConnection]);
+  }, [fetchTasks, fetchSources, checkGitHubConnection, activeMatrixId]);
 
   const fetchAllRepos = async () => {
     setLoadingRepos(true);
@@ -136,7 +198,7 @@ export default function MatrixBoard() {
     const res = await fetch("/api/sources/github", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: fullName }),
+      body: JSON.stringify({ repo: fullName, matrixId: activeMatrixId }),
     });
     if (res.ok) {
       setShowRepoPicker(false);
@@ -240,9 +302,116 @@ export default function MatrixBoard() {
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
+      {/* Matrix Selector */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="relative">
+          <button
+            onClick={() => setShowMatrixMenu(!showMatrixMenu)}
+            className="flex items-center gap-1.5 text-lg font-bold dark:text-white hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+          >
+            {matrices.find((m) => m.id === activeMatrixId)?.name || "All Tasks"}
+            <span className="text-xs text-gray-400">▼</span>
+          </button>
+          {showMatrixMenu && (
+            <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-lg z-40 min-w-[220px]">
+              {matrices.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm ${m.id === activeMatrixId ? "bg-blue-50 dark:bg-blue-900/30" : ""}`}
+                >
+                  <span
+                    className="flex-1 dark:text-white truncate"
+                    onClick={() => { setActiveMatrixId(m.id); setShowMatrixMenu(false); }}
+                  >
+                    {m.name}
+                    <span className="text-xs text-gray-400 ml-1">({m._count.tasks})</span>
+                  </span>
+                  <div className="flex gap-1 ml-2 shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowMatrixModal({ mode: "edit", name: m.name, description: m.description || "", id: m.id }); setShowMatrixMenu(false); }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs cursor-pointer"
+                      title="Edit"
+                    >✏️</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${m.name}"? Tasks will become unscoped.`)) deleteMatrix(m.id); setShowMatrixMenu(false); }}
+                      className="text-gray-400 hover:text-red-500 text-xs cursor-pointer"
+                      title="Delete"
+                    >🗑</button>
+                  </div>
+                </div>
+              ))}
+              <div className="border-t dark:border-gray-700">
+                <button
+                  onClick={() => { setShowMatrixModal({ mode: "create", name: "", description: "" }); setShowMatrixMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  + New Matrix
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Matrix Create/Edit Modal */}
+      {showMatrixModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm">
+            <h3 className="font-semibold mb-3 dark:text-white">
+              {showMatrixModal.mode === "create" ? "New Matrix" : "Edit Matrix"}
+            </h3>
+            <input
+              placeholder="Matrix name"
+              value={showMatrixModal.name}
+              onChange={(e) => setShowMatrixModal((m) => m && { ...m, name: e.target.value })}
+              autoFocus
+              className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 mb-3 text-sm"
+            />
+            <input
+              placeholder="Description (optional)"
+              value={showMatrixModal.description}
+              onChange={(e) => setShowMatrixModal((m) => m && { ...m, description: e.target.value })}
+              className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 mb-4 text-sm"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowMatrixModal(null)}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
+              >Cancel</button>
+              <button
+                onClick={() => {
+                  if (!showMatrixModal.name.trim()) return;
+                  if (showMatrixModal.mode === "create") {
+                    createMatrix(showMatrixModal.name, showMatrixModal.description);
+                  } else if (showMatrixModal.id) {
+                    updateMatrix(showMatrixModal.id, showMatrixModal.name, showMatrixModal.description);
+                  }
+                }}
+                disabled={!showMatrixModal.name.trim()}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer disabled:opacity-50"
+              >
+                {showMatrixModal.mode === "create" ? "Create" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Matrix Prompt */}
+      {matrices.length === 0 && !loading && (
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+          <p className="mb-3 text-lg">No matrices yet</p>
+          <button
+            onClick={() => setShowMatrixModal({ mode: "create", name: "", description: "" })}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer text-sm"
+          >
+            Create Your First Matrix
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="text-xl font-bold dark:text-white">Your Matrix</h1>
         <div className="flex gap-2 flex-wrap">
           {sources.map((s) => (
             <button

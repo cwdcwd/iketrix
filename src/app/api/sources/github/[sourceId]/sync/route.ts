@@ -56,6 +56,7 @@ export async function POST(
           externalUrl: task.externalUrl,
           sourceId: source.id,
           userId: user.id,
+          matrixId: source.matrixId,
           status: task.state === "closed" ? "completed" : "active",
         },
         update: {
@@ -98,6 +99,7 @@ export async function POST(
           externalUrl: task.externalUrl,
           sourceId: source.id,
           userId: user.id,
+          matrixId: source.matrixId,
           status: task.state === "closed" ? "completed" : "active",
         },
         update: {

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const user = await getOrCreateUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { repo } = await req.json();
+  const { repo, matrixId } = await req.json();
   if (!repo) {
     return NextResponse.json({ error: "repo required" }, { status: 400 });
   }
@@ -48,21 +48,28 @@ export async function POST(req: NextRequest) {
       name: repo,
       accessToken,
       userId: user.id,
+      matrixId: matrixId || null,
     },
-    update: { accessToken },
+    update: { accessToken, ...(matrixId ? { matrixId } : {}) },
   });
 
   return NextResponse.json({ source: { id: source.id, name: source.name } });
 }
 
-// GET /api/sources/github — list connected repos
-export async function GET() {
+// GET /api/sources/github?matrixId=... — list connected repos
+export async function GET(req: NextRequest) {
   const user = await getOrCreateUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const matrixId = req.nextUrl.searchParams.get("matrixId");
+
   const sources = await prisma.source.findMany({
-    where: { userId: user.id, type: "github" },
-    select: { id: true, name: true, createdAt: true, updatedAt: true },
+    where: {
+      userId: user.id,
+      type: "github",
+      ...(matrixId ? { matrixId } : {}),
+    },
+    select: { id: true, name: true, matrixId: true, createdAt: true, updatedAt: true },
   });
 
   return NextResponse.json({ sources });
