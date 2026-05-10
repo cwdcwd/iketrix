@@ -723,6 +723,7 @@ export default function MatrixBoard() {
                       onDragStart={(e) => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
                       onContextMenu={(e) => handleContextMenu(e, task)}
+                      title={task.classification?.reasoning || undefined}
                       className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs cursor-grab hover:shadow-md transition-all dark:text-gray-200 active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                       onClick={() => setSelectedTask(task)}
                     >
@@ -777,6 +778,7 @@ export default function MatrixBoard() {
                   onDragStart={(e) => handleDragStart(e, task.id)}
                   onDragEnd={handleDragEnd}
                   onContextMenu={(e) => handleContextMenu(e, task)}
+                  title={task.classification?.reasoning || undefined}
                   className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                 >
                   <p
