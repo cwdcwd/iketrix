@@ -8,10 +8,12 @@ const gateway = createOpenAI({
   apiKey: process.env.AI_GATEWAY_API_KEY,
 });
 
-const quadrantSchema = z.object({
-  quadrant: z.enum(["do", "schedule", "delegate", "delete"]),
+const classifySchema = z.object({
+  action: z.enum(["classify", "clarify"]),
+  quadrant: z.enum(["do", "schedule", "delegate", "delete"]).optional(),
   reasoning: z.string(),
   confidence: z.number().min(0).max(1),
+  question: z.string().optional(),
 });
 
 export async function classifyTask(
@@ -28,6 +30,12 @@ export async function classifyTask(
   });
   const modelId = user?.classifierModel || "openai/gpt-4o-mini";
 
+  // Get existing clarifications for this task
+  const clarifications = await prisma.clarification.findMany({
+    where: { taskId },
+    orderBy: { createdAt: "asc" },
+  });
+
   // Get user's past overrides to learn from corrections
   const overrides = await prisma.classificationOverride.findMany({
     where: { userId },
@@ -43,6 +51,10 @@ export async function classifyTask(
     )
     .join("\n");
 
+  const clarificationHistory = clarifications
+    .map((c) => `Q: ${c.question}\nA: ${c.answer}`)
+    .join("\n\n");
+
   const systemPrompt = user?.classifierPrompt || `You are an Eisenhower Matrix classifier. Classify this task into one of four quadrants:
 
 - "do": Important AND Urgent — must be done immediately and personally
@@ -54,10 +66,15 @@ Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance sign
 
   const prompt = `${systemPrompt}
 
+IMPORTANT: If the task description is too vague or ambiguous to confidently determine its urgency or importance, you SHOULD set action to "clarify" and ask ONE specific clarifying question in the "question" field. Only ask when you genuinely cannot determine the quadrant — do not ask for tasks with clear signals.
+
+If you can classify confidently (confidence >= 0.6), set action to "classify" and provide the quadrant.
+If you need clarification, set action to "clarify", set confidence to your current best guess confidence, provide your best-guess quadrant, reasoning explaining your uncertainty, and a single focused question.
+
 Task: ${title}
 ${description ? `Description: ${description}` : ""}
 ${labels.length > 0 ? `Labels: ${labels.join(", ")}` : ""}
-
+${clarificationHistory ? `\nPrevious clarifications:\n${clarificationHistory}\n` : ""}
 ${
   correctionHistory
     ? `The user has previously corrected these classifications — learn from their preferences:\n${correctionHistory}\n`
@@ -68,7 +85,7 @@ ${
   try {
     const result = await generateObject({
       model: gateway(modelId),
-      schema: quadrantSchema,
+      schema: classifySchema,
       prompt,
     });
     object = result.object;
@@ -77,31 +94,71 @@ ${
     throw err;
   }
 
+  if (object.action === "clarify" && object.question) {
+    // LLM needs more info — park the task as needing clarification
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        needsClarification: true,
+        pendingQuestion: object.question,
+        quadrant: null, // keep unclassified
+      },
+    });
+
+    // Still store the tentative classification for reference
+    await prisma.taskClassification.upsert({
+      where: { taskId },
+      create: {
+        taskId,
+        quadrant: object.quadrant || "schedule",
+        reasoning: object.reasoning,
+        confidence: object.confidence,
+        model: modelId,
+      },
+      update: {
+        quadrant: object.quadrant || "schedule",
+        reasoning: object.reasoning,
+        confidence: object.confidence,
+        model: modelId,
+      },
+    });
+
+    console.log(`[classify] ? "${title}" — needs clarification: ${object.question}`);
+    return { needsClarification: true, question: object.question };
+  }
+
+  // Confident classification
+  const quadrant = object.quadrant || "schedule";
+
   // Store classification
   const classification = await prisma.taskClassification.upsert({
     where: { taskId },
     create: {
       taskId,
-      quadrant: object.quadrant,
+      quadrant,
       reasoning: object.reasoning,
       confidence: object.confidence,
       model: modelId,
     },
     update: {
-      quadrant: object.quadrant,
+      quadrant,
       reasoning: object.reasoning,
       confidence: object.confidence,
       model: modelId,
     },
   });
 
-  // Update task quadrant
+  // Update task quadrant and clear any clarification state
   await prisma.task.update({
     where: { id: taskId },
-    data: { quadrant: object.quadrant },
+    data: {
+      quadrant,
+      needsClarification: false,
+      pendingQuestion: null,
+    },
   });
 
-  console.log(`[classify] ✓ "${title}" → ${object.quadrant} (${Math.round(object.confidence * 100)}%)`);
+  console.log(`[classify] ✓ "${title}" → ${quadrant} (${Math.round(object.confidence * 100)}%)`);
   return classification;
 }
 

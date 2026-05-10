@@ -26,22 +26,38 @@ export async function GET(req: NextRequest) {
 
   let allRepos;
 
-  if (dbUser.githubInstallationId) {
-    // GitHub App — list repos accessible through the installation
-    allRepos = await octokit.paginate(
-      octokit.rest.apps.listInstallationReposForAuthenticatedUser,
-      {
-        installation_id: parseInt(dbUser.githubInstallationId, 10),
-        per_page: 100,
-      },
-      (response) => response.data
-    );
-  } else {
-    // Fallback: classic token — list all user repos
-    allRepos = await octokit.paginate(
-      octokit.rest.repos.listForAuthenticatedUser,
-      { per_page: 100, sort: "updated" }
-    );
+  try {
+    if (dbUser.githubInstallationId) {
+      // GitHub App — list repos accessible through the installation
+      allRepos = await octokit.paginate(
+        octokit.rest.apps.listInstallationReposForAuthenticatedUser,
+        {
+          installation_id: parseInt(dbUser.githubInstallationId, 10),
+          per_page: 100,
+        },
+        (response) => response.data
+      );
+    } else {
+      // Fallback: classic token — list all user repos
+      allRepos = await octokit.paginate(
+        octokit.rest.repos.listForAuthenticatedUser,
+        { per_page: 100, sort: "updated" }
+      );
+    }
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status;
+    if (status === 401 || status === 403) {
+      // Token expired or revoked — clear it and return empty
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { githubToken: null, githubInstallationId: null },
+      });
+      return NextResponse.json(
+        { error: "GitHub token expired. Please reconnect.", repos: [] },
+        { status: 200 }
+      );
+    }
+    throw err;
   }
 
   const repos = allRepos.map((r: { full_name: string; name: string; owner: { login: string }; private: boolean; has_issues: boolean; open_issues_count: number }) => ({

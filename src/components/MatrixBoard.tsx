@@ -11,7 +11,10 @@ type Task = {
   externalUrl: string | null;
   delegatedTo: string | null;
   delegatedAt: string | null;
+  needsClarification: boolean;
+  pendingQuestion: string | null;
   classification: { reasoning: string; confidence: number } | null;
+  clarifications: { question: string; answer: string; createdAt: string }[];
   source: { name: string; type: string } | null;
 };
 
@@ -61,6 +64,10 @@ export default function MatrixBoard() {
   const [moveToMatrixModal, setMoveToMatrixModal] = useState<Task | null>(null);
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [clarifyingTaskId, setClarifyingTaskId] = useState<string | null>(null);
+  const [clarifyAnswer, setClarifyAnswer] = useState("");
+  const [clarifySubmitting, setClarifySubmitting] = useState(false);
+  const [reclassifyingTaskId, setReclassifyingTaskId] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/plain", taskId);
@@ -291,6 +298,35 @@ export default function MatrixBoard() {
       body: JSON.stringify({ completed: false }),
     });
     await fetchTasks();
+  };
+
+  const reclassifyTask = async (taskId: string) => {
+    setReclassifyingTaskId(taskId);
+    try {
+      await fetch(`/api/tasks/${taskId}/reclassify`, { method: "POST" });
+      await fetchTasks();
+    } catch (err) {
+      console.error("[reclassify] Failed:", err);
+    }
+    setReclassifyingTaskId(null);
+  };
+
+  const submitClarification = async (taskId: string) => {
+    if (!clarifyAnswer.trim()) return;
+    setClarifySubmitting(true);
+    try {
+      await fetch(`/api/tasks/${taskId}/clarify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer: clarifyAnswer.trim() }),
+      });
+      setClarifyAnswer("");
+      setClarifyingTaskId(null);
+      await fetchTasks();
+    } catch (err) {
+      console.error("[clarify] Failed:", err);
+    }
+    setClarifySubmitting(false);
   };
 
   const fetchCompletedTasks = useCallback(async () => {
@@ -691,6 +727,52 @@ export default function MatrixBoard() {
                 </p>
               </div>
             )}
+            {selectedTask.clarifications?.length > 0 && (
+              <div className="bg-purple-50 dark:bg-purple-950/30 rounded p-3 mb-3">
+                <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-1.5">
+                  Clarifications
+                </p>
+                <div className="space-y-1.5">
+                  {selectedTask.clarifications.map((c, i) => (
+                    <div key={i} className="text-xs">
+                      <p className="text-purple-700 dark:text-purple-300">Q: {c.question}</p>
+                      <p className="text-gray-700 dark:text-gray-300">A: {c.answer}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedTask.needsClarification && selectedTask.pendingQuestion && (
+              <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded p-3 mb-3">
+                <p className="text-xs text-purple-700 dark:text-purple-300 mb-2">
+                  🤖 {selectedTask.pendingQuestion}
+                </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitClarification(selectedTask.id);
+                  }}
+                  className="flex gap-1.5"
+                >
+                  <input
+                    type="text"
+                    value={clarifyAnswer}
+                    onChange={(e) => setClarifyAnswer(e.target.value)}
+                    placeholder="Type your answer…"
+                    disabled={clarifySubmitting}
+                    autoFocus
+                    className="flex-1 px-2 py-1.5 text-xs rounded border border-purple-200 dark:border-purple-700 bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={clarifySubmitting || !clarifyAnswer.trim()}
+                    className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 cursor-pointer disabled:opacity-50"
+                  >
+                    {clarifySubmitting ? "…" : "Send"}
+                  </button>
+                </form>
+              </div>
+            )}
             {selectedTask.externalUrl && (
               <a
                 href={selectedTask.externalUrl}
@@ -808,39 +890,123 @@ export default function MatrixBoard() {
             ⚠️ Needs Classification
           </h2>
           <p className="text-xs text-orange-500 dark:text-orange-500 mb-2">
-            These tasks couldn&apos;t be classified automatically. Drag them to a quadrant or hit sync to retry.
+            These tasks couldn&apos;t be classified automatically. Drag them to a quadrant or answer the AI&apos;s questions.
           </p>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {tasks
               .filter((t) => !t.quadrant && t.status !== "completed")
               .map((task) => (
-                <div
-                  key={task.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, task.id)}
-                  onDragEnd={handleDragEnd}
-                  onContextMenu={(e) => handleContextMenu(e, task)}
-                  title={task.classification?.reasoning || undefined}
-                  className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
-                >
-                  <p
-                    className="font-medium truncate flex-1 cursor-pointer hover:text-orange-700 dark:hover:text-orange-400"
-                    onClick={() => setSelectedTask(task)}
+                <div key={task.id} className="space-y-1">
+                  <div
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, task.id)}
+                    onDragEnd={handleDragEnd}
+                    onContextMenu={(e) => handleContextMenu(e, task)}
+                    title={task.classification?.reasoning || undefined}
+                    className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                   >
-                    {task.title}
-                  </p>
-                  <div className="flex gap-1 shrink-0">
-                    {(Object.keys(QUADRANTS) as QuadrantKey[]).map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => moveTask(task.id, q)}
-                        className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer"
-                        title={QUADRANTS[q].label}
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      {task.needsClarification && (
+                        <span
+                          className="shrink-0 cursor-pointer"
+                          title="AI needs clarification"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setClarifyingTaskId(clarifyingTaskId === task.id ? null : task.id);
+                            setClarifyAnswer("");
+                          }}
+                        >
+                          💬
+                        </span>
+                      )}
+                      <p
+                        className="font-medium truncate flex-1 cursor-pointer hover:text-orange-700 dark:hover:text-orange-400"
+                        onClick={() => setSelectedTask(task)}
                       >
-                        {QUADRANTS[q].label.split(" ")[0]}
-                      </button>
-                    ))}
+                        {task.title}
+                      </p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {task.needsClarification && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setClarifyingTaskId(clarifyingTaskId === task.id ? null : task.id);
+                            setClarifyAnswer("");
+                          }}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800/40 cursor-pointer"
+                        >
+                          Answer
+                        </button>
+                      )}
+                      {!task.needsClarification && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reclassifyTask(task.id);
+                          }}
+                          disabled={reclassifyingTaskId === task.id}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/40 cursor-pointer disabled:opacity-50"
+                          title="Retry classification"
+                        >
+                          {reclassifyingTaskId === task.id ? "…" : "🔄"}
+                        </button>
+                      )}
+                      {(Object.keys(QUADRANTS) as QuadrantKey[]).map((q) => (
+                        <button
+                          key={q}
+                          onClick={() => moveTask(task.id, q)}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer"
+                          title={QUADRANTS[q].label}
+                        >
+                          {QUADRANTS[q].label.split(" ")[0]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                  {/* Clarification Q&A */}
+                  {clarifyingTaskId === task.id && task.needsClarification && task.pendingQuestion && (
+                    <div className="ml-6 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-2.5">
+                      {/* Past clarifications */}
+                      {task.clarifications?.length > 0 && (
+                        <div className="mb-2 space-y-1">
+                          {task.clarifications.map((c, i) => (
+                            <div key={i} className="text-[11px]">
+                              <p className="text-purple-600 dark:text-purple-400">Q: {c.question}</p>
+                              <p className="text-gray-600 dark:text-gray-300">A: {c.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-purple-700 dark:text-purple-300 mb-2">
+                        🤖 {task.pendingQuestion}
+                      </p>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          submitClarification(task.id);
+                        }}
+                        className="flex gap-1.5"
+                      >
+                        <input
+                          type="text"
+                          value={clarifyAnswer}
+                          onChange={(e) => setClarifyAnswer(e.target.value)}
+                          placeholder="Type your answer…"
+                          disabled={clarifySubmitting}
+                          autoFocus
+                          className="flex-1 px-2 py-1 text-xs rounded border border-purple-200 dark:border-purple-700 bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={clarifySubmitting || !clarifyAnswer.trim()}
+                          className="px-2.5 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {clarifySubmitting ? "…" : "Send"}
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
               ))}
           </div>

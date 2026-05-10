@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
     },
     include: {
       classification: { select: { reasoning: true, confidence: true } },
+      clarifications: { select: { question: true, answer: true, createdAt: true }, orderBy: { createdAt: "asc" } },
       source: { select: { name: true, type: true } },
     },
     orderBy: { createdAt: "desc" },

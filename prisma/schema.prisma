@@ -67,7 +67,10 @@ model Task {
   matrix          Matrix?   @relation(fields: [matrixId], references: [id], onDelete: SetNull)
   quadrant        String?   // "do", "schedule", "delegate", "delete"
   status          String    @default("active") // "active", "delegated", "completed", "deleted"
+  needsClarification Boolean @default(false)
+  pendingQuestion    String?  // LLM's clarifying question
   classification  TaskClassification?
+  clarifications  Clarification[]
   overrides       ClassificationOverride[]
   delegatedTo     String?   // email or identifier of delegatee
   delegatedAt     DateTime?
@@ -75,6 +78,15 @@ model Task {
   updatedAt       DateTime  @updatedAt
 
   @@unique([sourceId, externalId])
+}
+
+model Clarification {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String
+  createdAt DateTime @default(now())
 }
 
 model TaskClassification {
