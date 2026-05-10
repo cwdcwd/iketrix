@@ -34,9 +34,13 @@ export async function POST(
 
   let imported: Array<{ id: string; title: string; description: string | null; labels: string[] }> = [];
 
+  console.log(`[sync] Starting sync for source ${source.name} (${sourceId}), existing tasks: ${existingCount}`);
+
   if (existingCount === 0) {
     // First import — fetch all
+    console.log(`[sync] First import — fetching all issues from ${source.name}`);
     const tasks = await adapter.fetchAll(connection);
+    console.log(`[sync] Fetched ${tasks.length} issues from ${source.name}`);
     for (const task of tasks) {
       const created = await prisma.task.upsert({
         where: {
@@ -121,16 +125,50 @@ export async function POST(
     }
   }
 
+  // Also pick up any previously unclassified tasks
+  const unclassified = await prisma.task.findMany({
+    where: {
+      sourceId: source.id,
+      status: "active",
+      quadrant: null,
+      id: { notIn: imported.map((t) => t.id) },
+    },
+    select: { id: true, title: true, description: true },
+  });
+  if (unclassified.length > 0) {
+    console.log(`[sync] Found ${unclassified.length} previously unclassified tasks`);
+    imported.push(
+      ...unclassified.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        labels: [] as string[],
+      }))
+    );
+  }
+
   // Classify unclassified tasks
   let classified = 0;
+  const failed: string[] = [];
   if (imported.length > 0) {
+    console.log(`[sync] Classifying ${imported.length} tasks...`);
     const results = await classifyTasks(imported, user.id);
     classified = results.filter((r) => r.status === "fulfilled").length;
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        failed.push(imported[i].title);
+      }
+    });
   }
+
+  const total = await prisma.task.count({ where: { sourceId: source.id, status: "active" } });
+  console.log(`[sync] Complete for ${source.name}: ${imported.length} imported, ${classified} classified, ${failed.length} failed, ${total} total active`);
 
   return NextResponse.json({
     imported: imported.length,
     classified,
-    total: await prisma.task.count({ where: { sourceId: source.id, status: "active" } }),
+    failed: failed.length,
+    failedTasks: failed,
+    total,
   });
 }

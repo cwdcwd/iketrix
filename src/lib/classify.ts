@@ -1,7 +1,12 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "./prisma";
+
+const gateway = createOpenAI({
+  baseURL: "https://ai-gateway.vercel.sh/v1",
+  apiKey: process.env.AI_GATEWAY_API_KEY,
+});
 
 const quadrantSchema = z.object({
   quadrant: z.enum(["do", "schedule", "delegate", "delete"]),
@@ -50,11 +55,18 @@ ${
 
 Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance signals (business value, user impact, strategic goals). Provide your reasoning.`;
 
-  const { object } = await generateObject({
-    model: openai("gpt-4o-mini"),
-    schema: quadrantSchema,
-    prompt,
-  });
+  let object;
+  try {
+    const result = await generateObject({
+      model: gateway("gpt-4o-mini"),
+      schema: quadrantSchema,
+      prompt,
+    });
+    object = result.object;
+  } catch (err) {
+    console.error(`[classify] Failed to classify task "${title}" (${taskId}):`, err);
+    throw err;
+  }
 
   // Store classification
   const classification = await prisma.taskClassification.upsert({
@@ -80,6 +92,7 @@ Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance sign
     data: { quadrant: object.quadrant },
   });
 
+  console.log(`[classify] ✓ "${title}" → ${object.quadrant} (${Math.round(object.confidence * 100)}%)`);
   return classification;
 }
 
@@ -87,10 +100,22 @@ export async function classifyTasks(
   tasks: Array<{ id: string; title: string; description: string | null; labels: string[] }>,
   userId: string
 ) {
+  console.log(`[classify] Classifying ${tasks.length} tasks...`);
   const results = await Promise.allSettled(
     tasks.map((task) =>
       classifyTask(task.id, task.title, task.description, task.labels, userId)
     )
   );
+  const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+  const rejected = results.filter((r) => r.status === "rejected");
+  if (rejected.length > 0) {
+    console.error(`[classify] ${rejected.length}/${tasks.length} tasks failed classification:`);
+    rejected.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`  [${i}] ${r.reason?.message || r.reason}`);
+      }
+    });
+  }
+  console.log(`[classify] Done: ${fulfilled} classified, ${rejected.length} failed`);
   return results;
 }

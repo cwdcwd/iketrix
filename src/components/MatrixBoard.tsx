@@ -113,7 +113,21 @@ export default function MatrixBoard() {
 
   const syncSource = async (sourceId: string) => {
     setSyncing(true);
-    await fetch(`/api/sources/github/${sourceId}/sync`, { method: "POST" });
+    try {
+      const res = await fetch(`/api/sources/github/${sourceId}/sync`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`[sync] Imported: ${data.imported}, Classified: ${data.classified}, Failed: ${data.failed}, Total: ${data.total}`);
+        if (data.failed > 0) {
+          console.warn(`[sync] Failed to classify:`, data.failedTasks);
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error(`[sync] Sync failed:`, res.status, err);
+      }
+    } catch (err) {
+      console.error(`[sync] Network error:`, err);
+    }
     await fetchTasks();
     setSyncing(false);
   };
@@ -445,6 +459,47 @@ export default function MatrixBoard() {
           <p className="text-sm">
             Connect a GitHub repo to import issues into your Eisenhower Matrix
           </p>
+        </div>
+      )}
+
+      {/* Unclassified Tasks */}
+      {tasks.filter((t) => !t.quadrant && t.status !== "completed").length > 0 && (
+        <div className="mt-4 border-2 border-dashed border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 rounded-lg p-3">
+          <h2 className="font-semibold text-orange-700 dark:text-orange-400 text-sm mb-2">
+            ⚠️ Needs Classification
+          </h2>
+          <p className="text-xs text-orange-500 dark:text-orange-500 mb-2">
+            These tasks couldn&apos;t be classified automatically. Drag them to a quadrant or hit sync to retry.
+          </p>
+          <div className="space-y-1.5">
+            {tasks
+              .filter((t) => !t.quadrant && t.status !== "completed")
+              .map((task) => (
+                <div
+                  key={task.id}
+                  className="bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2"
+                >
+                  <p
+                    className="font-medium truncate flex-1 cursor-pointer hover:text-orange-700 dark:hover:text-orange-400"
+                    onClick={() => setSelectedTask(task)}
+                  >
+                    {task.title}
+                  </p>
+                  <div className="flex gap-1 shrink-0">
+                    {(Object.keys(QUADRANTS) as QuadrantKey[]).map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => moveTask(task.id, q)}
+                        className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer"
+                        title={QUADRANTS[q].label}
+                      >
+                        {QUADRANTS[q].label.split(" ")[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>
       )}
     </div>
