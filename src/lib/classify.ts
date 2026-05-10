@@ -10,10 +10,10 @@ const gateway = createOpenAI({
 
 const classifySchema = z.object({
   action: z.enum(["classify", "clarify"]),
-  quadrant: z.enum(["do", "schedule", "delegate", "delete"]).optional(),
+  quadrant: z.enum(["do", "schedule", "delegate", "delete"]).nullable(),
   reasoning: z.string(),
   confidence: z.number().min(0).max(1),
-  question: z.string().optional(),
+  question: z.string().nullable(),
 });
 
 export async function classifyTask(
