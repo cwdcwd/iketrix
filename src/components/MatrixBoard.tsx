@@ -55,6 +55,8 @@ export default function MatrixBoard() {
   const [dragOverQuadrant, setDragOverQuadrant] = useState<QuadrantKey | null>(null);
   const [showMatrixModal, setShowMatrixModal] = useState<{ mode: "create" | "edit"; name: string; description: string; id?: string } | null>(null);
   const [showMatrixMenu, setShowMatrixMenu] = useState(false);
+  const [quickTaskInput, setQuickTaskInput] = useState("");
+  const [quickTaskAdding, setQuickTaskAdding] = useState(false);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/plain", taskId);
@@ -225,6 +227,35 @@ export default function MatrixBoard() {
     }
     await fetchTasks();
     setSyncing(false);
+  };
+
+  const quickAddTask = async () => {
+    const title = quickTaskInput.trim();
+    if (!title) return;
+    setQuickTaskAdding(true);
+    setQuickTaskInput("");
+    try {
+      const res = await fetch("/api/tasks/quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, matrixId: activeMatrixId }),
+      });
+      if (res.ok) {
+        // Add immediately as unclassified, then poll for classification
+        const { task } = await res.json();
+        setTasks((prev) => [...prev, task]);
+        // Poll briefly for classification result
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          await fetchTasks();
+          if (attempts >= 6) clearInterval(poll);
+        }, 1500);
+      }
+    } catch (err) {
+      console.error("[quick] Failed to add task:", err);
+    }
+    setQuickTaskAdding(false);
   };
 
   const moveTask = async (taskId: string, quadrant: QuadrantKey) => {
@@ -430,6 +461,33 @@ export default function MatrixBoard() {
             {githubConnected ? "+ Add Repo" : "Connect GitHub"}
           </button>
         </div>
+      </div>
+
+      {/* Quick Task Input */}
+      <div className="mb-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            quickAddTask();
+          }}
+          className="flex gap-2"
+        >
+          <input
+            type="text"
+            value={quickTaskInput}
+            onChange={(e) => setQuickTaskInput(e.target.value)}
+            placeholder="Jot a quick task… (auto-classified)"
+            disabled={quickTaskAdding}
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={quickTaskAdding || !quickTaskInput.trim()}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+          >
+            {quickTaskAdding ? "Adding…" : "+ Add"}
+          </button>
+        </form>
       </div>
 
       {/* Repo Picker Modal */}
