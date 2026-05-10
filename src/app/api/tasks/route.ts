@@ -2,17 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/tasks?matrixId=... — get tasks for a matrix (or all if no matrixId)
+// GET /api/tasks?matrixId=...&status=... — get tasks for a matrix (or all if no matrixId)
 export async function GET(req: NextRequest) {
   const user = await getOrCreateUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const matrixId = req.nextUrl.searchParams.get("matrixId");
+  const status = req.nextUrl.searchParams.get("status");
+
+  const statusFilter = status === "completed"
+    ? { status: "completed" }
+    : { status: { in: ["active", "delegated"] } };
 
   const tasks = await prisma.task.findMany({
     where: {
       userId: user.id,
-      status: { in: ["active", "delegated"] },
+      ...statusFilter,
       ...(matrixId ? { matrixId } : {}),
     },
     include: {

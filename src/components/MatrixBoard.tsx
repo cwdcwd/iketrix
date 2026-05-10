@@ -59,6 +59,8 @@ export default function MatrixBoard() {
   const [quickTaskAdding, setQuickTaskAdding] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
   const [moveToMatrixModal, setMoveToMatrixModal] = useState<Task | null>(null);
+  const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/plain", taskId);
@@ -270,6 +272,37 @@ export default function MatrixBoard() {
     setContextMenu(null);
     await fetchTasks();
   };
+
+  const completeTask = async (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    await fetch(`/api/tasks/${taskId}/complete`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed: true }),
+    });
+    if (showCompleted) fetchCompletedTasks();
+  };
+
+  const uncompleteTask = async (taskId: string) => {
+    setCompletedTasks((prev) => prev.filter((t) => t.id !== taskId));
+    await fetch(`/api/tasks/${taskId}/complete`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed: false }),
+    });
+    await fetchTasks();
+  };
+
+  const fetchCompletedTasks = useCallback(async () => {
+    const params = activeMatrixId
+      ? `?matrixId=${activeMatrixId}&status=completed`
+      : "?status=completed";
+    const res = await fetch(`/api/tasks${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      setCompletedTasks(data.tasks);
+    }
+  }, [activeMatrixId]);
 
   const handleContextMenu = (e: React.MouseEvent, task: Task) => {
     e.preventDefault();
@@ -727,7 +760,16 @@ export default function MatrixBoard() {
                       className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs cursor-grab hover:shadow-md transition-all dark:text-gray-200 active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                       onClick={() => setSelectedTask(task)}
                     >
-                      <p className="font-medium truncate">{task.title}</p>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={(e) => { e.stopPropagation(); completeTask(task.id); }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-green-600"
+                        />
+                        <p className="font-medium truncate">{task.title}</p>
+                      </div>
                       {task.status === "delegated" && (
                         <p className="text-yellow-600 text-[10px] mt-0.5">
                           → {task.delegatedTo}
@@ -805,6 +847,50 @@ export default function MatrixBoard() {
         </div>
       )}
 
+      {/* Completed Tasks */}
+      <div className="mt-4">
+        <button
+          onClick={() => {
+            const next = !showCompleted;
+            setShowCompleted(next);
+            if (next) fetchCompletedTasks();
+          }}
+          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer flex items-center gap-1"
+        >
+          <span className="text-xs">{showCompleted ? "▼" : "▶"}</span>
+          ✓ Completed {completedTasks.length > 0 && `(${completedTasks.length})`}
+        </button>
+        {showCompleted && (
+          <div className="mt-2 space-y-1">
+            {completedTasks.length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic pl-4">No completed tasks yet</p>
+            ) : (
+              completedTasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded bg-gray-50 dark:bg-gray-800/50 text-xs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={true}
+                    onChange={() => uncompleteTask(task.id)}
+                    className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-green-600"
+                  />
+                  <span className="line-through text-gray-400 dark:text-gray-500 truncate flex-1">
+                    {task.title}
+                  </span>
+                  {task.quadrant && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">
+                      {QUADRANTS[task.quadrant as QuadrantKey]?.label.split(" ")[0]}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Context Menu */}
       {contextMenu && (
         <div
@@ -821,6 +907,15 @@ export default function MatrixBoard() {
               {contextMenu.task.title}
             </div>
             <hr className="dark:border-gray-700" />
+            <button
+              className="w-full text-left px-3 py-2 text-sm text-green-700 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+              onClick={() => {
+                completeTask(contextMenu.task.id);
+                setContextMenu(null);
+              }}
+            >
+              ✓ Mark complete
+            </button>
             {matrices.length > 1 && (
               <button
                 className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
