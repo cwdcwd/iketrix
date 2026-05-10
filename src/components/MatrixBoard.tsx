@@ -57,6 +57,8 @@ export default function MatrixBoard() {
   const [showMatrixMenu, setShowMatrixMenu] = useState(false);
   const [quickTaskInput, setQuickTaskInput] = useState("");
   const [quickTaskAdding, setQuickTaskAdding] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
+  const [moveToMatrixModal, setMoveToMatrixModal] = useState<Task | null>(null);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/plain", taskId);
@@ -256,6 +258,22 @@ export default function MatrixBoard() {
       console.error("[quick] Failed to add task:", err);
     }
     setQuickTaskAdding(false);
+  };
+
+  const moveToMatrix = async (taskId: string, matrixId: string) => {
+    await fetch(`/api/tasks/${taskId}/matrix`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matrixId }),
+    });
+    setMoveToMatrixModal(null);
+    setContextMenu(null);
+    await fetchTasks();
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, task: Task) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, task });
   };
 
   const moveTask = async (taskId: string, quadrant: QuadrantKey) => {
@@ -655,6 +673,17 @@ export default function MatrixBoard() {
                 Delegated to {selectedTask.delegatedTo}
               </p>
             )}
+            {matrices.length > 1 && (
+              <button
+                onClick={() => {
+                  setMoveToMatrixModal(selectedTask);
+                  setSelectedTask(null);
+                }}
+                className="mt-3 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+              >
+                📦 Move to another matrix…
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -693,6 +722,7 @@ export default function MatrixBoard() {
                       draggable
                       onDragStart={(e) => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
+                      onContextMenu={(e) => handleContextMenu(e, task)}
                       className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs cursor-grab hover:shadow-md transition-all dark:text-gray-200 active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                       onClick={() => setSelectedTask(task)}
                     >
@@ -746,6 +776,7 @@ export default function MatrixBoard() {
                   draggable
                   onDragStart={(e) => handleDragStart(e, task.id)}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={(e) => handleContextMenu(e, task)}
                   className={`bg-white dark:bg-gray-800 rounded p-2 shadow-sm dark:shadow-gray-900/30 text-xs dark:text-gray-200 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? "opacity-40 scale-95" : ""}`}
                 >
                   <p
@@ -768,6 +799,85 @@ export default function MatrixBoard() {
                   </div>
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+        >
+          <div
+            className="absolute bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 truncate max-w-[200px]">
+              {contextMenu.task.title}
+            </div>
+            <hr className="dark:border-gray-700" />
+            {matrices.length > 1 && (
+              <button
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                onClick={() => {
+                  setMoveToMatrixModal(contextMenu.task);
+                  setContextMenu(null);
+                }}
+              >
+                📦 Move to matrix…
+              </button>
+            )}
+            {(Object.keys(QUADRANTS) as QuadrantKey[])
+              .filter((q) => q !== contextMenu.task.quadrant)
+              .map((q) => (
+                <button
+                  key={q}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                  onClick={() => {
+                    moveTask(contextMenu.task.id, q);
+                    setContextMenu(null);
+                  }}
+                >
+                  → {QUADRANTS[q].label}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Move to Matrix Modal */}
+      {moveToMatrixModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm">
+            <h3 className="font-semibold mb-1 dark:text-white">Move to Matrix</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 truncate">
+              {moveToMatrixModal.title}
+            </p>
+            <div className="space-y-2">
+              {matrices
+                .filter((m) => m.id !== activeMatrixId)
+                .map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => moveToMatrix(moveToMatrixModal.id, m.id)}
+                    className="w-full text-left px-3 py-2.5 rounded-lg border dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                  >
+                    <span className="font-medium text-sm dark:text-white">{m.name}</span>
+                    {m.description && (
+                      <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">{m.description}</span>
+                    )}
+                  </button>
+                ))}
+            </div>
+            <button
+              onClick={() => setMoveToMatrixModal(null)}
+              className="mt-4 w-full text-center text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

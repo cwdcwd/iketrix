@@ -9,12 +9,37 @@ type GitHubStatus = {
   avatarUrl?: string;
 };
 
+type GatewayModel = {
+  id: string;
+  name: string;
+  provider: string;
+  contextWindow?: number;
+};
+
+const DEFAULT_PROMPT = `You are an Eisenhower Matrix classifier. Classify this task into one of four quadrants:
+
+- "do": Important AND Urgent — must be done immediately and personally
+- "schedule": Important AND NOT Urgent — set a deadline, do personally later
+- "delegate": NOT Important AND Urgent — assign to someone else
+- "delete": NOT Important AND NOT Urgent — drop it entirely
+
+Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance signals (business value, user impact, strategic goals). Provide your reasoning.`;
+
 export default function SettingsPage() {
   const router = useRouter();
   const [githubStatus, setGithubStatus] = useState<GitHubStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+
+  // Classifier settings
+  const [classifierModel, setClassifierModel] = useState("openai/gpt-4o-mini");
+  const [classifierPrompt, setClassifierPrompt] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [availableModels, setAvailableModels] = useState<GatewayModel[]>([]);
+  const [modelFilter, setModelFilter] = useState("");
+  const [loadingModels, setLoadingModels] = useState(true);
 
   useEffect(() => {
     // Load saved theme
@@ -29,6 +54,20 @@ export default function SettingsPage() {
       .then((res) => res.json())
       .then((data) => setGithubStatus(data))
       .finally(() => setLoading(false));
+
+    // Fetch classifier settings
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.classifierModel) setClassifierModel(data.classifierModel);
+        if (data.classifierPrompt) setClassifierPrompt(data.classifierPrompt);
+      });
+
+    // Fetch available models from AI Gateway
+    fetch("/api/models")
+      .then((res) => res.json())
+      .then((data) => setAvailableModels(data.models || []))
+      .finally(() => setLoadingModels(false));
   }, []);
 
   const applyTheme = (t: "light" | "dark" | "system") => {
@@ -65,6 +104,22 @@ export default function SettingsPage() {
       setGithubStatus({ connected: false });
     }
     setDisconnecting(false);
+  };
+
+  const saveClassifierSettings = async () => {
+    setSavingSettings(true);
+    setSettingsSaved(false);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        classifierModel,
+        classifierPrompt: classifierPrompt || "",
+      }),
+    });
+    setSavingSettings(false);
+    setSettingsSaved(true);
+    setTimeout(() => setSettingsSaved(false), 2000);
   };
 
   return (
@@ -155,6 +210,117 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {/* Classifier Model */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 dark:text-white">Classifier Model</h2>
+        <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Choose which AI model classifies your tasks into the Eisenhower Matrix.
+          </p>
+          {classifierModel && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                Current: {availableModels.find((m) => m.id === classifierModel)?.name || classifierModel}
+              </span>
+              <span className="text-xs text-blue-500 dark:text-blue-400 ml-2">{classifierModel}</span>
+            </div>
+          )}
+          <input
+            type="text"
+            placeholder="Search models..."
+            value={modelFilter}
+            onChange={(e) => setModelFilter(e.target.value)}
+            className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {loadingModels ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">Loading models...</p>
+          ) : (
+            <div className="max-h-[300px] overflow-y-auto space-y-1">
+              {availableModels
+                .filter((m) =>
+                  !modelFilter ||
+                  m.name.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                  m.id.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                  m.provider.toLowerCase().includes(modelFilter.toLowerCase())
+                )
+                .map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setClassifierModel(m.id)}
+                    className={`w-full px-3 py-2 rounded-lg border text-left text-sm cursor-pointer transition-colors ${
+                      classifierModel === m.id
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                        : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">{m.provider}</span>
+                    {m.contextWindow && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 float-right">
+                        {Math.round(m.contextWindow / 1000)}k ctx
+                      </span>
+                    )}
+                  </button>
+                ))}
+              {availableModels.filter((m) =>
+                !modelFilter ||
+                m.name.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                m.id.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                m.provider.toLowerCase().includes(modelFilter.toLowerCase())
+              ).length === 0 && (
+                <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">
+                  No models match &ldquo;{modelFilter}&rdquo;
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Classifier Prompt */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 dark:text-white">Classifier Prompt</h2>
+        <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Customize the system prompt used when classifying tasks. Leave blank to use the default. The task title, description, and labels are appended automatically.
+          </p>
+          <textarea
+            value={classifierPrompt}
+            onChange={(e) => setClassifierPrompt(e.target.value)}
+            placeholder={DEFAULT_PROMPT}
+            rows={8}
+            maxLength={4000}
+            className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+          />
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {classifierPrompt.length}/4000 chars
+            </span>
+            <div className="flex items-center gap-2">
+              {classifierPrompt && (
+                <button
+                  onClick={() => setClassifierPrompt("")}
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
+                >
+                  Reset to default
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Save */}
+      <div className="flex justify-end mb-8">
+        <button
+          onClick={saveClassifierSettings}
+          disabled={savingSettings}
+          className="px-5 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer disabled:opacity-50"
+        >
+          {savingSettings ? "Saving…" : settingsSaved ? "✓ Saved" : "Save Settings"}
+        </button>
+      </div>
     </div>
   );
 }

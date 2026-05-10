@@ -21,6 +21,13 @@ export async function classifyTask(
   labels: string[],
   userId: string
 ) {
+  // Get user settings for model and prompt
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { classifierModel: true, classifierPrompt: true },
+  });
+  const modelId = user?.classifierModel || "openai/gpt-4o-mini";
+
   // Get user's past overrides to learn from corrections
   const overrides = await prisma.classificationOverride.findMany({
     where: { userId },
@@ -36,12 +43,16 @@ export async function classifyTask(
     )
     .join("\n");
 
-  const prompt = `You are an Eisenhower Matrix classifier. Classify this task into one of four quadrants:
+  const systemPrompt = user?.classifierPrompt || `You are an Eisenhower Matrix classifier. Classify this task into one of four quadrants:
 
 - "do": Important AND Urgent — must be done immediately and personally
 - "schedule": Important AND NOT Urgent — set a deadline, do personally later  
 - "delegate": NOT Important AND Urgent — assign to someone else
 - "delete": NOT Important AND NOT Urgent — drop it entirely
+
+Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance signals (business value, user impact, strategic goals). Provide your reasoning.`;
+
+  const prompt = `${systemPrompt}
 
 Task: ${title}
 ${description ? `Description: ${description}` : ""}
@@ -51,14 +62,12 @@ ${
   correctionHistory
     ? `The user has previously corrected these classifications — learn from their preferences:\n${correctionHistory}\n`
     : ""
-}
-
-Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance signals (business value, user impact, strategic goals). Provide your reasoning.`;
+}`;
 
   let object;
   try {
     const result = await generateObject({
-      model: gateway("gpt-4o-mini"),
+      model: gateway(modelId),
       schema: quadrantSchema,
       prompt,
     });
@@ -76,13 +85,13 @@ Consider urgency signals (deadlines, bugs, blockers, "ASAP") and importance sign
       quadrant: object.quadrant,
       reasoning: object.reasoning,
       confidence: object.confidence,
-      model: "gpt-4o-mini",
+      model: modelId,
     },
     update: {
       quadrant: object.quadrant,
       reasoning: object.reasoning,
       confidence: object.confidence,
-      model: "gpt-4o-mini",
+      model: modelId,
     },
   });
 
