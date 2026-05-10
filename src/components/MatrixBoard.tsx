@@ -303,8 +303,15 @@ export default function MatrixBoard() {
   const reclassifyTask = async (taskId: string) => {
     setReclassifyingTaskId(taskId);
     try {
-      await fetch(`/api/tasks/${taskId}/reclassify`, { method: "POST" });
+      const res = await fetch(`/api/tasks/${taskId}/reclassify`, { method: "POST" });
       await fetchTasks();
+      if (res.ok) {
+        const data = await res.json();
+        if (data.task?.needsClarification) {
+          setClarifyingTaskId(taskId);
+          setClarifyAnswer("");
+        }
+      }
     } catch (err) {
       console.error("[reclassify] Failed:", err);
     }
@@ -940,17 +947,30 @@ export default function MatrixBoard() {
                         </button>
                       )}
                       {!task.needsClarification && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reclassifyTask(task.id);
-                          }}
-                          disabled={reclassifyingTaskId === task.id}
-                          className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/40 cursor-pointer disabled:opacity-50"
-                          title="Retry classification"
-                        >
-                          {reclassifyingTaskId === task.id ? "…" : "🔄"}
-                        </button>
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setClarifyingTaskId(clarifyingTaskId === task.id ? null : task.id);
+                              setClarifyAnswer("");
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800/40 cursor-pointer"
+                            title="Add context to help classify"
+                          >
+                            💬
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reclassifyTask(task.id);
+                            }}
+                            disabled={reclassifyingTaskId === task.id}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/40 cursor-pointer disabled:opacity-50"
+                            title="Retry classification"
+                          >
+                            {reclassifyingTaskId === task.id ? "…" : "🔄"}
+                          </button>
+                        </>
                       )}
                       {(Object.keys(QUADRANTS) as QuadrantKey[]).map((q) => (
                         <button
@@ -965,7 +985,7 @@ export default function MatrixBoard() {
                     </div>
                   </div>
                   {/* Clarification Q&A */}
-                  {clarifyingTaskId === task.id && task.needsClarification && task.pendingQuestion && (
+                  {clarifyingTaskId === task.id && (
                     <div className="ml-6 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-2.5">
                       {/* Past clarifications */}
                       {task.clarifications?.length > 0 && (
@@ -979,7 +999,7 @@ export default function MatrixBoard() {
                         </div>
                       )}
                       <p className="text-xs text-purple-700 dark:text-purple-300 mb-2">
-                        🤖 {task.pendingQuestion}
+                        🤖 {task.pendingQuestion || "What additional context can you provide to help classify this task?"}
                       </p>
                       <form
                         onSubmit={(e) => {

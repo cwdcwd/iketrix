@@ -27,7 +27,7 @@ export async function POST(
   await prisma.clarification.create({
     data: {
       taskId,
-      question: task.pendingQuestion || "No question recorded",
+      question: task.pendingQuestion || "User-provided context",
       answer: answer.trim(),
     },
   });
