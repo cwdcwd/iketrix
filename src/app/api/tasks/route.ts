@@ -30,3 +30,24 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ tasks });
 }
+
+// PATCH /api/tasks — update a task's title
+export async function PATCH(req: NextRequest) {
+  const user = await getOrCreateUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id, title } = await req.json();
+  if (!id || typeof title !== "string" || !title.trim()) {
+    return NextResponse.json({ error: "id and non-empty title required" }, { status: 400 });
+  }
+
+  const task = await prisma.task.findFirst({ where: { id, userId: user.id } });
+  if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+  const updated = await prisma.task.update({
+    where: { id },
+    data: { title: title.trim() },
+  });
+
+  return NextResponse.json({ task: updated });
+}

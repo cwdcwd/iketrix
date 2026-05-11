@@ -2,6 +2,7 @@ import { generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "./prisma";
+import { syncQuadrantLabel } from "./sync-quadrant-label";
 
 const gateway = createOpenAI({
   baseURL: "https://ai-gateway.vercel.sh/v1",
@@ -176,6 +177,12 @@ ${
   });
 
   console.log(`[classify] ✓ "${title}" → ${quadrant} (${Math.round(object.confidence * 100)}%)`);
+
+  // Sync quadrant label to external source (fire-and-forget)
+  syncQuadrantLabel(taskId, quadrant, userId).catch((err) =>
+    console.error("[label] Background sync failed:", err)
+  );
+
   return classification;
 }
 

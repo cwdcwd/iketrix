@@ -98,6 +98,28 @@ export class GitHubAdapter implements InputAdapter {
     }
   }
 
+  async setIssueState(
+    connection: SourceConnection,
+    externalId: string,
+    state: "open" | "closed"
+  ): Promise<boolean> {
+    try {
+      const octokit = new Octokit({ auth: connection.accessToken });
+      const [owner, repo] = connection.name.split("/");
+      await octokit.rest.issues.update({
+        owner,
+        repo,
+        issue_number: parseInt(externalId, 10),
+        state,
+        ...(state === "closed" ? { state_reason: "completed" } : {}),
+      });
+      return true;
+    } catch (err) {
+      console.error(`[github] Failed to ${state} issue #${externalId}:`, err);
+      return false;
+    }
+  }
+
   private toTaskInput(
     issue: Record<string, unknown>,
     repoName: string
@@ -127,5 +149,86 @@ export class GitHubAdapter implements InputAdapter {
       updatedAt: new Date(i.updated_at),
       metadata: { repo: repoName },
     };
+  }
+
+  private static readonly QUADRANT_LABELS: Record<string, string> = {
+    do: "iketrix:do",
+    schedule: "iketrix:schedule",
+    delegate: "iketrix:delegate",
+    delete: "iketrix:delete",
+  };
+
+  private static readonly LABEL_COLORS: Record<string, string> = {
+    "iketrix:do": "d73a4a",        // red — urgent+important
+    "iketrix:schedule": "0075ca",  // blue — important, not urgent
+    "iketrix:delegate": "e4e669",  // yellow — urgent, not important
+    "iketrix:delete": "cfd3d7",    // grey — neither
+  };
+
+  /**
+   * Set the quadrant label on a GitHub issue, removing any previous iketrix:* labels.
+   */
+  async updateQuadrantLabel(
+    connection: SourceConnection,
+    externalId: string,
+    quadrant: string
+  ): Promise<boolean> {
+    try {
+      const octokit = new Octokit({ auth: connection.accessToken });
+      const [owner, repo] = connection.name.split("/");
+      const issueNumber = parseInt(externalId, 10);
+
+      const newLabel = GitHubAdapter.QUADRANT_LABELS[quadrant];
+      if (!newLabel) return false;
+
+      // Ensure the label exists in the repo (create if needed)
+      try {
+        await octokit.rest.issues.getLabel({ owner, repo, name: newLabel });
+      } catch {
+        await octokit.rest.issues.createLabel({
+          owner,
+          repo,
+          name: newLabel,
+          color: GitHubAdapter.LABEL_COLORS[newLabel] || "ededed",
+          description: `Iketrix: ${quadrant} quadrant`,
+        });
+      }
+
+      // Get current labels on the issue
+      const { data: currentLabels } = await octokit.rest.issues.listLabelsOnIssue({
+        owner,
+        repo,
+        issue_number: issueNumber,
+      });
+
+      // Remove old iketrix:* labels
+      const oldLabels = currentLabels.filter(
+        (l) => l.name.startsWith("iketrix:") && l.name !== newLabel
+      );
+      for (const label of oldLabels) {
+        await octokit.rest.issues.removeLabel({
+          owner,
+          repo,
+          issue_number: issueNumber,
+          name: label.name,
+        }).catch(() => {}); // ignore if already removed
+      }
+
+      // Add the new label (if not already present)
+      const alreadyHas = currentLabels.some((l) => l.name === newLabel);
+      if (!alreadyHas) {
+        await octokit.rest.issues.addLabels({
+          owner,
+          repo,
+          issue_number: issueNumber,
+          labels: [newLabel],
+        });
+      }
+
+      return true;
+    } catch (err) {
+      console.error(`[github] Failed to update quadrant label on #${externalId}:`, err);
+      return false;
+    }
   }
 }

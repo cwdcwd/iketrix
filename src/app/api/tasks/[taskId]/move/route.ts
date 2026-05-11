@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
 import { extractMemory } from "@/lib/classifier-memory";
+import { syncQuadrantLabel } from "@/lib/sync-quadrant-label";
 
 // PATCH /api/tasks/[taskId]/move — move a task to a different quadrant
 export async function PATCH(
@@ -52,6 +53,11 @@ export async function PATCH(
     where: { id: taskId },
     data: { quadrant },
   });
+
+  // Sync quadrant label to external source (fire-and-forget)
+  syncQuadrantLabel(taskId, quadrant, user.id).catch((err) =>
+    console.error("[label] Background sync failed:", err)
+  );
 
   return NextResponse.json({ task: updated });
 }

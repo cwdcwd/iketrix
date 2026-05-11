@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 type Task = {
   id: string;
@@ -68,6 +68,87 @@ export default function MatrixBoard() {
   const [clarifyAnswer, setClarifyAnswer] = useState("");
   const [clarifySubmitting, setClarifySubmitting] = useState(false);
   const [reclassifyingTaskId, setReclassifyingTaskId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (taskIds: string[]) => {
+    setSelectedTaskIds((prev) => {
+      const allSelected = taskIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) {
+        taskIds.forEach((id) => next.delete(id));
+      } else {
+        taskIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const bulkComplete = async () => {
+    const ids = Array.from(selectedTaskIds);
+    setTasks((prev) => prev.filter((t) => !selectedTaskIds.has(t.id)));
+    setSelectedTaskIds(new Set());
+    await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/tasks/${id}/complete`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ completed: true }),
+        })
+      )
+    );
+    if (showCompleted) fetchCompletedTasks();
+  };
+
+  const bulkMove = async (quadrant: QuadrantKey) => {
+    const ids = Array.from(selectedTaskIds);
+    setTasks((prev) =>
+      prev.map((t) => (selectedTaskIds.has(t.id) ? { ...t, quadrant } : t))
+    );
+    setSelectedTaskIds(new Set());
+    await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/tasks/${id}/move`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quadrant }),
+        })
+      )
+    );
+  };
+
+  const updateTaskTitle = async (taskId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) { setEditingTaskId(null); return; }
+    const original = tasks.find((t) => t.id === taskId);
+    if (original && trimmed === original.title) { setEditingTaskId(null); return; }
+    // Optimistic update
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, title: trimmed } : t));
+    setEditingTaskId(null);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, title: trimmed }),
+      });
+      if (!res.ok) {
+        // Revert on failure
+        if (original) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, title: original.title } : t));
+      }
+    } catch {
+      if (original) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, title: original.title } : t));
+    }
+  };
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("text/plain", taskId);
@@ -414,6 +495,44 @@ export default function MatrixBoard() {
         </button>
         <h2 className={`text-2xl font-bold ${q.text} mb-1`}>{q.label}</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{q.subtitle}</p>
+        {/* Select all + bulk actions */}
+        {qTasks.length > 0 && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={qTasks.every((t) => selectedTaskIds.has(t.id))}
+                ref={(el) => { if (el) el.indeterminate = qTasks.some((t) => selectedTaskIds.has(t.id)) && !qTasks.every((t) => selectedTaskIds.has(t.id)); }}
+                onChange={() => toggleSelectAll(qTasks.map((t) => t.id))}
+                className="w-4 h-4 rounded cursor-pointer accent-blue-600"
+              />
+              Select all ({qTasks.length})
+            </label>
+            {qTasks.some((t) => selectedTaskIds.has(t.id)) && (
+              <>
+                <span className="text-xs text-gray-400">|</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {qTasks.filter((t) => selectedTaskIds.has(t.id)).length} selected:
+                </span>
+                <button
+                  onClick={() => bulkComplete()}
+                  className="text-xs px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800/40 cursor-pointer"
+                >
+                  ✓ Complete
+                </button>
+                {(Object.keys(QUADRANTS) as QuadrantKey[]).filter((q2) => q2 !== expandedQuadrant).map((q2) => (
+                  <button
+                    key={q2}
+                    onClick={() => bulkMove(q2)}
+                    className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300 cursor-pointer"
+                  >
+                    → {QUADRANTS[q2].label}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
         <div className="space-y-3">
           {qTasks.length === 0 && (
             <p className="text-gray-400 dark:text-gray-500 italic">No tasks in this quadrant</p>
@@ -428,6 +547,14 @@ export default function MatrixBoard() {
                 setDelegateModal({ task: t, type: "email", identifier: "" })
               }
               onSelect={setSelectedTask}
+              editingTaskId={editingTaskId}
+              editingTitle={editingTitle}
+              onStartEdit={(id, title) => { setEditingTaskId(id); setEditingTitle(title); }}
+              onEditChange={setEditingTitle}
+              onSaveEdit={(id) => updateTaskTitle(id, editingTitle)}
+              onCancelEdit={() => setEditingTaskId(null)}
+              selected={selectedTaskIds.has(task.id)}
+              onToggleSelect={toggleTaskSelection}
             />
           ))}
         </div>
@@ -721,7 +848,26 @@ export default function MatrixBoard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
-              <h3 className="font-semibold pr-4 dark:text-white">{selectedTask.title}</h3>
+              {editingTaskId === selectedTask.id ? (
+                <EditableInput
+                  value={editingTitle}
+                  onChange={setEditingTitle}
+                  onSave={() => {
+                    updateTaskTitle(selectedTask.id, editingTitle);
+                    setSelectedTask({ ...selectedTask, title: editingTitle.trim() || selectedTask.title });
+                  }}
+                  onCancel={() => setEditingTaskId(null)}
+                  className="font-semibold text-base flex-1 mr-4"
+                />
+              ) : (
+                <h3
+                  className="font-semibold pr-4 dark:text-white cursor-text"
+                  onDoubleClick={() => { setEditingTaskId(selectedTask.id); setEditingTitle(selectedTask.title); }}
+                  title="Double-click to edit"
+                >
+                  {selectedTask.title}
+                </h3>
+              )}
               <button
                 onClick={() => setSelectedTask(null)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer text-lg"
@@ -834,19 +980,57 @@ export default function MatrixBoard() {
                 onDrop={(e) => handleDrop(e, key)}
               >
                 <div
-                  className="flex justify-between items-center mb-2 cursor-pointer"
-                  onClick={() => setExpandedQuadrant(key)}
+                  className="flex justify-between items-center mb-2"
                 >
-                  <div>
-                    <h2 className={`font-semibold ${q.text} text-sm`}>
-                      {q.label}
-                    </h2>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">{q.subtitle}</p>
+                  <div className="flex items-center gap-1.5">
+                    {qTasks.length > 0 && (
+                      <input
+                        type="checkbox"
+                        checked={qTasks.length > 0 && qTasks.every((t) => selectedTaskIds.has(t.id))}
+                        ref={(el) => { if (el) el.indeterminate = qTasks.some((t) => selectedTaskIds.has(t.id)) && !qTasks.every((t) => selectedTaskIds.has(t.id)); }}
+                        onChange={(e) => { e.stopPropagation(); toggleSelectAll(qTasks.map((t) => t.id)); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-blue-600"
+                        title="Select all"
+                      />
+                    )}
+                    <div className="cursor-pointer" onClick={() => setExpandedQuadrant(key)}>
+                      <h2 className={`font-semibold ${q.text} text-sm`}>
+                        {q.label}
+                      </h2>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">{q.subtitle}</p>
+                    </div>
                   </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span
+                    className="text-xs text-gray-400 dark:text-gray-500 cursor-pointer"
+                    onClick={() => setExpandedQuadrant(key)}
+                  >
                     {qTasks.length} {qTasks.length === 1 ? "task" : "tasks"} →
                   </span>
                 </div>
+                {/* Bulk action bar */}
+                {qTasks.some((t) => selectedTaskIds.has(t.id)) && (
+                  <div className="flex items-center gap-1 mb-2 flex-wrap">
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 mr-1">
+                      {qTasks.filter((t) => selectedTaskIds.has(t.id)).length} selected:
+                    </span>
+                    <button
+                      onClick={() => bulkComplete()}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800/40 cursor-pointer"
+                    >
+                      ✓ Complete
+                    </button>
+                    {(Object.keys(QUADRANTS) as QuadrantKey[]).filter((q2) => q2 !== key).map((q2) => (
+                      <button
+                        key={q2}
+                        onClick={() => bulkMove(q2)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-300 cursor-pointer"
+                      >
+                        → {QUADRANTS[q2].label.split(" ")[0]}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[200px]">
                   {qTasks.slice(0, 5).map((task) => (
                     <div
@@ -862,12 +1046,27 @@ export default function MatrixBoard() {
                       <div className="flex items-center gap-1.5">
                         <input
                           type="checkbox"
-                          checked={false}
-                          onChange={(e) => { e.stopPropagation(); completeTask(task.id); }}
+                          checked={selectedTaskIds.has(task.id)}
+                          onChange={(e) => { e.stopPropagation(); toggleTaskSelection(task.id); }}
                           onClick={(e) => e.stopPropagation()}
-                          className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-green-600"
+                          className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-blue-600"
                         />
-                        <p className="font-medium truncate">{task.title}</p>
+                        {editingTaskId === task.id ? (
+                          <EditableInput
+                            value={editingTitle}
+                            onChange={setEditingTitle}
+                            onSave={() => updateTaskTitle(task.id, editingTitle)}
+                            onCancel={() => setEditingTaskId(null)}
+                            className="font-medium text-xs flex-1"
+                          />
+                        ) : (
+                          <p
+                            className="font-medium truncate"
+                            onDoubleClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTitle(task.title); }}
+                          >
+                            {task.title}
+                          </p>
+                        )}
                       </div>
                       {task.status === "delegated" && (
                         <p className="text-yellow-600 text-[10px] mt-0.5">
@@ -936,12 +1135,23 @@ export default function MatrixBoard() {
                           💬
                         </span>
                       )}
-                      <p
-                        className="font-medium truncate flex-1 cursor-pointer hover:text-orange-700 dark:hover:text-orange-400"
-                        onClick={() => setSelectedTask(task)}
-                      >
-                        {task.title}
-                      </p>
+                      {editingTaskId === task.id ? (
+                        <EditableInput
+                          value={editingTitle}
+                          onChange={setEditingTitle}
+                          onSave={() => updateTaskTitle(task.id, editingTitle)}
+                          onCancel={() => setEditingTaskId(null)}
+                          className="font-medium text-xs flex-1"
+                        />
+                      ) : (
+                        <p
+                          className="font-medium truncate flex-1 cursor-pointer hover:text-orange-700 dark:hover:text-orange-400"
+                          onClick={() => setSelectedTask(task)}
+                          onDoubleClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); setEditingTitle(task.title); }}
+                        >
+                          {task.title}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       {task.needsClarification && (
@@ -1184,23 +1394,61 @@ function TaskCard({
   currentQuadrant,
   onDelegate,
   onSelect,
+  editingTaskId,
+  editingTitle,
+  onStartEdit,
+  onEditChange,
+  onSaveEdit,
+  onCancelEdit,
+  selected,
+  onToggleSelect,
 }: {
   task: Task;
   onMove: (id: string, q: QuadrantKey) => void;
   currentQuadrant: QuadrantKey;
   onDelegate: (t: Task) => void;
   onSelect: (t: Task) => void;
+  editingTaskId: string | null;
+  editingTitle: string;
+  onStartEdit: (id: string, title: string) => void;
+  onEditChange: (title: string) => void;
+  onSaveEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   const otherQuadrants = (
     Object.keys(QUADRANTS) as QuadrantKey[]
   ).filter((q) => q !== currentQuadrant);
 
   return (
-    <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg p-3 shadow-sm dark:shadow-gray-900/30">
+    <div className={`bg-white dark:bg-gray-800 border rounded-lg p-3 shadow-sm dark:shadow-gray-900/30 ${selected ? "border-blue-400 dark:border-blue-500 ring-1 ring-blue-400/30" : "dark:border-gray-700"}`}>
       <div className="flex justify-between items-start gap-2">
-        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(task)}>
-          <p className="font-medium text-sm dark:text-white">{task.title}</p>
-          {task.description && (
+        <div className="flex items-start gap-2 flex-1 min-w-0">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(task.id)}
+            className="shrink-0 w-4 h-4 rounded cursor-pointer accent-blue-600 mt-0.5"
+          />
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(task)}>
+            {editingTaskId === task.id ? (
+              <EditableInput
+                value={editingTitle}
+                onChange={onEditChange}
+                onSave={() => onSaveEdit(task.id)}
+                onCancel={onCancelEdit}
+                className="font-medium text-sm"
+              />
+            ) : (
+              <p
+                className="font-medium text-sm dark:text-white"
+                onDoubleClick={(e) => { e.stopPropagation(); onStartEdit(task.id, task.title); }}
+              >
+                {task.title}
+              </p>
+            )}
+            {task.description && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
               {task.description}
             </p>
@@ -1220,6 +1468,7 @@ function TaskCard({
               Delegated to {task.delegatedTo}
             </p>
           )}
+        </div>
         </div>
         {task.externalUrl && (
           <a
@@ -1252,5 +1501,43 @@ function TaskCard({
         )}
       </div>
     </div>
+  );
+}
+
+function EditableInput({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  className?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onSave();
+        if (e.key === "Escape") onCancel();
+        e.stopPropagation();
+      }}
+      onBlur={onSave}
+      onClick={(e) => e.stopPropagation()}
+      className={`${className || ""} w-full bg-white dark:bg-gray-700 border border-blue-400 dark:border-blue-500 rounded px-1 py-0.5 outline-none dark:text-white`}
+    />
   );
 }
