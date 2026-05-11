@@ -14,6 +14,8 @@ model User {
   email           String    @unique
   name            String?
   githubToken     String?   // GitHub App OAuth user access token
+  githubRefreshToken String? // GitHub App refresh token for token renewal
+  githubTokenExpiresAt DateTime? // When the access token expires
   githubInstallationId String? // GitHub App installation ID
   classifierModel String?   // e.g. "gpt-4o-mini", "gpt-4o", "claude-sonnet-4-20250514"
   classifierPrompt String?  // Custom system prompt override for classification

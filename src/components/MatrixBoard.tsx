@@ -219,15 +219,25 @@ export default function MatrixBoard() {
     }
   };
 
-  const syncSource = async (sourceId: string) => {
+  const syncSource = async (sourceId: string, isRetry = false) => {
     setSyncing(true);
     try {
       const res = await fetch(`/api/sources/github/${sourceId}/sync`, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        console.log(`[sync] Imported: ${data.imported}, Classified: ${data.classified}, Failed: ${data.failed}, Total: ${data.total}`);
-        if (data.failed > 0) {
-          console.warn(`[sync] Failed to classify:`, data.failedTasks);
+        if (data.tokenRefreshed && !isRetry) {
+          // Token was refreshed, retry the sync automatically
+          console.log("[sync] Token refreshed, retrying...");
+          await syncSource(sourceId, true);
+          return;
+        }
+        if (data.error) {
+          console.warn(`[sync] ${data.error}`);
+        } else {
+          console.log(`[sync] Imported: ${data.imported}, Classified: ${data.classified}, Failed: ${data.failed}, Total: ${data.total}`);
+          if (data.failed > 0) {
+            console.warn(`[sync] Failed to classify:`, data.failedTasks);
+          }
         }
       } else {
         const err = await res.json().catch(() => ({}));

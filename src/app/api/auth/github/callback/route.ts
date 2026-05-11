@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/user";
-import { prisma } from "@/lib/prisma";
+import { storeGitHubTokens } from "@/lib/github-token";
 
 function getBaseUrl(req: NextRequest): string {
   const host = req.headers.get("host") || "localhost:3000";
@@ -75,13 +75,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      githubToken: tokenData.access_token,
-      ...(installationId ? { githubInstallationId: installationId } : {}),
-    },
-  });
+  await storeGitHubTokens(
+    user.id,
+    tokenData,
+    installationId || undefined
+  );
 
   const response = NextResponse.redirect(
     `${baseUrl}?github=connected`
@@ -131,13 +129,7 @@ async function handleInstallation(
     return NextResponse.redirect(`${baseUrl}?error=unauthorized`);
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      githubToken: tokenData.access_token,
-      githubInstallationId: installationId,
-    },
-  });
+  await storeGitHubTokens(user.id, tokenData, installationId);
 
   return NextResponse.redirect(`${baseUrl}?github=connected`);
 }

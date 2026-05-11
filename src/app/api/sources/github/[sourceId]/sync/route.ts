@@ -3,6 +3,7 @@ import { getOrCreateUser } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
 import { GitHubAdapter } from "@/lib/adapters/github";
 import { classifyTasks } from "@/lib/classify";
+import { refreshGitHubToken } from "@/lib/github-token";
 
 const adapter = new GitHubAdapter();
 
@@ -36,6 +37,7 @@ export async function POST(
 
   console.log(`[sync] Starting sync for source ${source.name} (${sourceId}), existing tasks: ${existingCount}`);
 
+  try {
   if (existingCount === 0) {
     // First import — fetch all
     console.log(`[sync] First import — fetching all issues from ${source.name}`);
@@ -125,6 +127,31 @@ export async function POST(
         data: { status: "completed" },
       });
     }
+  }
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status;
+    if (status === 401 || status === 403) {
+      // Try refreshing the token
+      console.log(`[sync] Token expired for ${source.name}, attempting refresh...`);
+      const newToken = await refreshGitHubToken(user.id);
+      if (newToken) {
+        // Update the source's access token too
+        await prisma.source.update({
+          where: { id: source.id },
+          data: { accessToken: newToken },
+        });
+        return NextResponse.json(
+          { error: "Token refreshed. Please retry sync.", imported: 0, classified: 0, failed: 0, total: 0, tokenRefreshed: true },
+          { status: 200 }
+        );
+      }
+      console.error(`[sync] Token refresh failed for ${source.name}`);
+      return NextResponse.json(
+        { error: "GitHub token expired. Please reconnect.", imported: 0, classified: 0, failed: 0, total: 0 },
+        { status: 200 }
+      );
+    }
+    throw err;
   }
 
   // Also pick up any previously unclassified tasks

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
+import { getValidGitHubToken, refreshGitHubToken } from "@/lib/github-token";
 import { Octokit } from "octokit";
 
 // GET /api/sources/github/repos — fetch ALL repos the user has access to
@@ -22,13 +23,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const octokit = new Octokit({ auth: dbUser.githubToken });
+  // Get a valid token (proactively refreshes if expiring soon)
+  let token = await getValidGitHubToken(user.id);
+  if (!token) {
+    return NextResponse.json(
+      { error: "GitHub token expired. Please reconnect.", repos: [] },
+      { status: 200 }
+    );
+  }
+
+  let octokit = new Octokit({ auth: token });
 
   let allRepos;
 
   try {
     if (dbUser.githubInstallationId) {
-      // GitHub App — list repos accessible through the installation
       allRepos = await octokit.paginate(
         octokit.rest.apps.listInstallationReposForAuthenticatedUser,
         {
@@ -38,7 +47,6 @@ export async function GET(req: NextRequest) {
         (response) => response.data
       );
     } else {
-      // Fallback: classic token — list all user repos
       allRepos = await octokit.paginate(
         octokit.rest.repos.listForAuthenticatedUser,
         { per_page: 100, sort: "updated" }
@@ -47,17 +55,41 @@ export async function GET(req: NextRequest) {
   } catch (err: unknown) {
     const status = (err as { status?: number }).status;
     if (status === 401 || status === 403) {
-      // Token expired or revoked — clear it and return empty
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { githubToken: null, githubInstallationId: null },
-      });
-      return NextResponse.json(
-        { error: "GitHub token expired. Please reconnect.", repos: [] },
-        { status: 200 }
-      );
+      // Try refreshing the token once
+      const newToken = await refreshGitHubToken(user.id);
+      if (newToken) {
+        octokit = new Octokit({ auth: newToken });
+        try {
+          if (dbUser.githubInstallationId) {
+            allRepos = await octokit.paginate(
+              octokit.rest.apps.listInstallationReposForAuthenticatedUser,
+              {
+                installation_id: parseInt(dbUser.githubInstallationId, 10),
+                per_page: 100,
+              },
+              (response) => response.data
+            );
+          } else {
+            allRepos = await octokit.paginate(
+              octokit.rest.repos.listForAuthenticatedUser,
+              { per_page: 100, sort: "updated" }
+            );
+          }
+        } catch {
+          return NextResponse.json(
+            { error: "GitHub token expired. Please reconnect.", repos: [] },
+            { status: 200 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { error: "GitHub token expired. Please reconnect.", repos: [] },
+          { status: 200 }
+        );
+      }
+    } else {
+      throw err;
     }
-    throw err;
   }
 
   const repos = allRepos.map((r: { full_name: string; name: string; owner: { login: string }; private: boolean; has_issues: boolean; open_issues_count: number }) => ({
