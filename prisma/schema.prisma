@@ -23,6 +23,7 @@ model User {
   tasks           Task[]
   sources         Source[]
   overrides       ClassificationOverride[]
+  memories        ClassifierMemory[]
 }
 
 model Matrix {
@@ -108,5 +109,14 @@ model ClassificationOverride {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   fromQuadrant    String
   toQuadrant      String
+  createdAt       DateTime  @default(now())
+}
+
+model ClassifierMemory {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content         String    // Distilled lesson from user corrections
+  sourceOverrideId String?  // The override that triggered this memory
   createdAt       DateTime  @default(now())
 }

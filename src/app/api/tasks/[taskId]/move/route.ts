@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
+import { extractMemory } from "@/lib/classifier-memory";
 
 // PATCH /api/tasks/[taskId]/move — move a task to a different quadrant
 export async function PATCH(
@@ -27,7 +28,7 @@ export async function PATCH(
 
   // Record the override for LLM learning
   if (fromQuadrant !== quadrant) {
-    await prisma.classificationOverride.create({
+    const override = await prisma.classificationOverride.create({
       data: {
         taskId,
         userId: user.id,
@@ -35,6 +36,16 @@ export async function PATCH(
         toQuadrant: quadrant,
       },
     });
+
+    // Extract a reusable memory from this correction (fire-and-forget)
+    extractMemory(
+      override.id,
+      task.title,
+      task.description,
+      fromQuadrant,
+      quadrant,
+      user.id
+    ).catch((err) => console.error("[memory] Background extraction failed:", err));
   }
 
   const updated = await prisma.task.update({

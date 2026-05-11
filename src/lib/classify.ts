@@ -36,12 +36,20 @@ export async function classifyTask(
     orderBy: { createdAt: "asc" },
   });
 
-  // Get user's past overrides to learn from corrections
+  // Get user's past overrides to learn from corrections (last 5 for recency)
   const overrides = await prisma.classificationOverride.findMany({
     where: { userId },
     include: { task: { select: { title: true, description: true } } },
     orderBy: { createdAt: "desc" },
-    take: 20,
+    take: 5,
+  });
+
+  // Get distilled memories from past corrections
+  const memories = await prisma.classifierMemory.findMany({
+    where: { userId },
+    select: { content: true },
+    orderBy: { createdAt: "desc" },
+    take: 50,
   });
 
   const correctionHistory = overrides
@@ -49,6 +57,10 @@ export async function classifyTask(
       (o) =>
         `- "${o.task.title}" was classified as "${o.fromQuadrant}" but user moved it to "${o.toQuadrant}"`
     )
+    .join("\n");
+
+  const learnedPreferences = memories
+    .map((m) => `- ${m.content}`)
     .join("\n");
 
   const clarificationHistory = clarifications
@@ -76,8 +88,13 @@ ${description ? `Description: ${description}` : ""}
 ${labels.length > 0 ? `Labels: ${labels.join(", ")}` : ""}
 ${clarificationHistory ? `\nPrevious clarifications:\n${clarificationHistory}\n` : ""}
 ${
+  learnedPreferences
+    ? `LEARNED USER PREFERENCES (apply these rules when classifying):\n${learnedPreferences}\n`
+    : ""
+}
+${
   correctionHistory
-    ? `The user has previously corrected these classifications — learn from their preferences:\n${correctionHistory}\n`
+    ? `Recent corrections by this user:\n${correctionHistory}\n`
     : ""
 }`;
 
