@@ -1,13 +1,8 @@
 import { generateObject } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "./prisma";
 import { syncQuadrantLabel } from "./sync-quadrant-label";
-
-const gateway = createOpenAI({
-  baseURL: "https://ai-gateway.vercel.sh/v1",
-  apiKey: process.env.AI_GATEWAY_API_KEY,
-});
+import { gateway } from "./ai-gateway";
 
 const classifySchema = z.object({
   action: z.enum(["classify", "clarify"]),

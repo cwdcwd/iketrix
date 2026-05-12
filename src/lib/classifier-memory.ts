@@ -1,12 +1,7 @@
 import { generateObject } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "./prisma";
-
-const gateway = createOpenAI({
-  baseURL: "https://ai-gateway.vercel.sh/v1",
-  apiKey: process.env.AI_GATEWAY_API_KEY,
-});
+import { gateway } from "./ai-gateway";
 
 const memorySchema = z.object({
   memory: z.string(),

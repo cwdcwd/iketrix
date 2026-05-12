@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import ContactPicker from "./ContactPicker";
+import AgentChat from "./AgentChat";
 
 type Task = {
   id: string;
@@ -52,7 +54,8 @@ export default function MatrixBoard() {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [repoFilter, setRepoFilter] = useState("");
   const [githubConnected, setGithubConnected] = useState(false);
-  const [delegateModal, setDelegateModal] = useState<{ task: Task; type: string; identifier: string } | null>(null);
+  const [delegateModal, setDelegateModal] = useState<{ task: Task; mode: "contact" | "agent"; contactId?: string } | null>(null);
+  const [agentChat, setAgentChat] = useState<{ conversationId: string; taskId: string; taskTitle: string } | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverQuadrant, setDragOverQuadrant] = useState<QuadrantKey | null>(null);
@@ -454,15 +457,51 @@ export default function MatrixBoard() {
     });
   };
 
-  const delegateTask = async () => {
+  const delegateTask = async (contactId?: string) => {
     if (!delegateModal) return;
+
+    if (delegateModal.mode === "agent") {
+      // Check for existing conversation first
+      const existingRes = await fetch(`/api/agent/conversations?taskId=${delegateModal.task.id}`);
+      if (existingRes.ok) {
+        const existing = await existingRes.json();
+        if (existing.conversationId) {
+          setDelegateModal(null);
+          setAgentChat({
+            conversationId: existing.conversationId,
+            taskId: delegateModal.task.id,
+            taskTitle: delegateModal.task.title,
+          });
+          return;
+        }
+      }
+
+      const res = await fetch(`/api/tasks/${delegateModal.task.id}/delegate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "agent" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDelegateModal(null);
+        setAgentChat({
+          conversationId: data.conversationId,
+          taskId: delegateModal.task.id,
+          taskTitle: delegateModal.task.title,
+        });
+        fetchTasks();
+      }
+      return;
+    }
+
+    // Contact delegation
+    const cid = contactId || delegateModal.contactId;
+    if (!cid) return;
+
     const res = await fetch(`/api/tasks/${delegateModal.task.id}/delegate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: delegateModal.type,
-        identifier: delegateModal.identifier,
-      }),
+      body: JSON.stringify({ mode: "contact", contactId: cid }),
     });
     if (res.ok) {
       setDelegateModal(null);
@@ -544,7 +583,7 @@ export default function MatrixBoard() {
               onMove={moveTask}
               currentQuadrant={expandedQuadrant}
               onDelegate={(t) =>
-                setDelegateModal({ task: t, type: "email", identifier: "" })
+                setDelegateModal({ task: t, mode: "contact" })
               }
               onSelect={setSelectedTask}
               editingTaskId={editingTaskId}
@@ -784,63 +823,81 @@ export default function MatrixBoard() {
             <p className="text-sm text-gray-500 mb-4 truncate">
               {delegateModal.task.title}
             </p>
-            <div className="flex gap-2 mb-3">
+            <div className="flex gap-2 mb-4">
               <button
                 onClick={() =>
-                  setDelegateModal((m) => m && { ...m, type: "email" })
+                  setDelegateModal((m) => m && { ...m, mode: "contact" })
                 }
                 className={`text-xs px-3 py-1 rounded-full cursor-pointer ${
-                  delegateModal.type === "email"
+                  delegateModal.mode === "contact"
                     ? "bg-blue-600 text-white"
-                    : "bg-gray-100"
+                    : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"
                 }`}
               >
-                Email
+                👤 Contact
               </button>
               <button
                 onClick={() =>
-                  setDelegateModal((m) => m && { ...m, type: "github" })
+                  setDelegateModal((m) => m && { ...m, mode: "agent" })
                 }
                 className={`text-xs px-3 py-1 rounded-full cursor-pointer ${
-                  delegateModal.type === "github"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100"
+                  delegateModal.mode === "agent"
+                    ? "bg-purple-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"
                 }`}
               >
-                GitHub
+                🤖 Agent
               </button>
             </div>
-            <input
-              placeholder={
-                delegateModal.type === "email"
-                  ? "email@example.com"
-                  : "github-username"
-              }
-              value={delegateModal.identifier}
-              onChange={(e) =>
-                setDelegateModal((m) =>
-                  m && { ...m, identifier: e.target.value }
-                )
-              }
-              className="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 mb-4 text-sm"
-            />
-            <div className="flex gap-2 justify-end">
+
+            {delegateModal.mode === "contact" && (
+              <ContactPicker
+                onSelect={(contact) => {
+                  setDelegateModal((m) => m && { ...m, contactId: contact.id });
+                  delegateTask(contact.id);
+                }}
+                onCreateAndSelect={(contact) => {
+                  setDelegateModal((m) => m && { ...m, contactId: contact.id });
+                  delegateTask(contact.id);
+                }}
+              />
+            )}
+
+            {delegateModal.mode === "agent" && (
+              <div className="text-sm text-gray-600 dark:text-gray-300 space-y-3">
+                <p>
+                  An AI agent will help you clarify this task, break it into subtasks,
+                  create GitHub issues, or send delegation emails on your behalf.
+                </p>
+                <button
+                  onClick={() => delegateTask()}
+                  className="w-full px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 cursor-pointer"
+                >
+                  Start Agent Chat
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end mt-4">
               <button
                 onClick={() => setDelegateModal(null)}
                 className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
               >
                 Cancel
               </button>
-              <button
-                onClick={delegateTask}
-                disabled={!delegateModal.identifier}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer disabled:opacity-50"
-              >
-                Delegate
-              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Agent Chat */}
+      {agentChat && (
+        <AgentChat
+          conversationId={agentChat.conversationId}
+          taskId={agentChat.taskId}
+          taskTitle={agentChat.taskTitle}
+          onClose={() => { setAgentChat(null); fetchTasks(); }}
+        />
       )}
 
       {/* Task Detail Modal */}
@@ -1322,6 +1379,17 @@ export default function MatrixBoard() {
             >
               ✓ Mark complete
             </button>
+            {contextMenu.task.quadrant === "delegate" && (
+              <button
+                className="w-full text-left px-3 py-2 text-sm text-blue-700 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                onClick={() => {
+                  setDelegateModal({ task: contextMenu.task, mode: "contact" });
+                  setContextMenu(null);
+                }}
+              >
+                👤 Assign…
+              </button>
+            )}
             {matrices.length > 1 && (
               <button
                 className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"

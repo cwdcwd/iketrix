@@ -321,6 +321,143 @@ export default function SettingsPage() {
           {savingSettings ? "Saving…" : settingsSaved ? "✓ Saved" : "Save Settings"}
         </button>
       </div>
+
+      {/* Contacts */}
+      <ContactsSection />
     </div>
+  );
+}
+
+function ContactsSection() {
+  const [contacts, setContacts] = useState<Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    linkedUserId: string | null;
+    inviteStatus: string | null;
+    linkedUser: { id: string; name: string | null; email: string } | null;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const fetchContacts = async () => {
+    try {
+      const res = await fetch("/api/contacts");
+      if (res.ok) {
+        const data = await res.json();
+        setContacts(data.contacts);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchContacts(); }, []);
+
+  const addContact = async () => {
+    if (!newEmail.trim()) return;
+    setAdding(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail.trim(), name: newName.trim() || null }),
+      });
+      if (res.ok || res.status === 409) {
+        setNewEmail("");
+        setNewName("");
+        fetchContacts();
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const deleteContact = async (id: string) => {
+    await fetch(`/api/contacts/${id}`, { method: "DELETE" });
+    fetchContacts();
+  };
+
+  const inviteContact = async (id: string) => {
+    await fetch(`/api/contacts/${id}/invite`, { method: "POST" });
+    fetchContacts();
+  };
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-lg font-semibold mb-3 dark:text-white">Contacts</h2>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        Manage contacts you can delegate tasks to. Linked contacts (existing users) will see delegated tasks on their board automatically.
+      </p>
+
+      {/* Add contact form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Name"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          className="border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm w-36"
+        />
+        <input
+          type="email"
+          placeholder="Email"
+          value={newEmail}
+          onChange={(e) => setNewEmail(e.target.value)}
+          className="flex-1 border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm"
+        />
+        <button
+          onClick={addContact}
+          disabled={!newEmail.trim() || adding}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer disabled:opacity-50"
+        >
+          {adding ? "Adding..." : "Add"}
+        </button>
+      </div>
+
+      {/* Contact list */}
+      {loading ? (
+        <p className="text-sm text-gray-400">Loading contacts...</p>
+      ) : contacts.length === 0 ? (
+        <p className="text-sm text-gray-400">No contacts yet. Add one above to start delegating.</p>
+      ) : (
+        <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
+          {contacts.map((contact) => (
+            <div key={contact.id} className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700 last:border-b-0">
+              <div>
+                <span className="text-sm font-medium dark:text-white">
+                  {contact.name || contact.email}
+                </span>
+                {contact.name && (
+                  <span className="text-xs text-gray-500 ml-2">{contact.email}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {contact.linkedUser ? (
+                  <span className="text-xs text-green-600">✓ User</span>
+                ) : contact.inviteStatus === "pending" ? (
+                  <span className="text-xs text-yellow-600">⏳ Invited</span>
+                ) : (
+                  <button
+                    onClick={() => inviteContact(contact.id)}
+                    className="text-xs text-blue-600 hover:text-blue-700 cursor-pointer"
+                  >
+                    Invite
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteContact(contact.id)}
+                  className="text-xs text-red-500 hover:text-red-700 cursor-pointer"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
