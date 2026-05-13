@@ -20,6 +20,7 @@ model User {
   classifierModel String?   // e.g. "gpt-4o-mini", "gpt-4o", "claude-sonnet-4-20250514"
   classifierPrompt String?  // Custom system prompt override for classification
   agentModel      String?   // Model used for delegation agent conversations
+  enabledTools    String?   // JSON array of enabled tool IDs for the agent (null = defaults)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   matrices        Matrix[]
@@ -30,6 +31,7 @@ model User {
   contacts        Contact[] @relation("ContactOwner")
   linkedContacts  Contact[] @relation("ContactLinkedUser")
   agentConversations AgentConversation[]
+  artifacts       Artifact[]
 }
 
 model Matrix {
@@ -84,6 +86,7 @@ model Task {
   delegatedToContactId String?
   delegatedToContact   Contact? @relation(fields: [delegatedToContactId], references: [id], onDelete: SetNull)
   agentConversation    AgentConversation?
+  artifacts       Artifact[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -156,6 +159,7 @@ model AgentConversation {
   status          String    @default("active") // "active" | "completed" | "abandoned"
   summary         String?
   messages        AgentMessage[]
+  artifacts       Artifact[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -170,4 +174,22 @@ model AgentMessage {
   toolArgs        Json?
   toolResult      Json?
   createdAt       DateTime  @default(now())
+}
+
+model Artifact {
+  id              String    @id @default(cuid())
+  taskId          String
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId  String?
+  conversation    AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  title           String
+  content         String    // Text content: markdown, code, JSON, etc.
+  mimeType        String    @default("text/markdown")
+  language        String?   // Programming language for code artifacts
+  toolName        String?   // Which tool produced this artifact
+  metadata        Json?     // Extra context
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }

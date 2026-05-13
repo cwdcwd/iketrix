@@ -41,13 +41,22 @@ export async function POST(req: NextRequest) {
   // Get user's model preference for agents
   const userSettings = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { agentModel: true },
+    select: { agentModel: true, enabledTools: true },
   });
+
+  let enabledToolIds: string[] | null = null;
+  if (userSettings?.enabledTools) {
+    try { enabledToolIds = JSON.parse(userSettings.enabledTools); } catch { /* use defaults */ }
+  }
 
   const agent = createDelegationAgent(
     user.id,
     taskId,
-    userSettings?.agentModel || undefined
+    {
+      modelId: userSettings?.agentModel || undefined,
+      enabledToolIds,
+      conversationId,
+    }
   );
 
   // Persist the latest user message

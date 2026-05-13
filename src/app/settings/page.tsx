@@ -16,6 +16,15 @@ type GatewayModel = {
   contextWindow?: number;
 };
 
+type ToolDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  enabledByDefault: boolean;
+  locked?: boolean;
+};
+
 const DEFAULT_PROMPT = `You are an Eisenhower Matrix classifier. Classify this task into one of four quadrants:
 
 - "do": Important AND Urgent — must be done immediately and personally
@@ -41,6 +50,8 @@ export default function SettingsPage() {
   const [availableModels, setAvailableModels] = useState<GatewayModel[]>([]);
   const [modelFilter, setModelFilter] = useState("");
   const [loadingModels, setLoadingModels] = useState(true);
+  const [enabledTools, setEnabledTools] = useState<string[]>([]);
+  const [toolCatalog, setToolCatalog] = useState<ToolDefinition[]>([]);
 
   useEffect(() => {
     // Load saved theme
@@ -63,6 +74,8 @@ export default function SettingsPage() {
         if (data.classifierModel) setClassifierModel(data.classifierModel);
         if (data.classifierPrompt) setClassifierPrompt(data.classifierPrompt);
         if (data.agentModel) setAgentModel(data.agentModel);
+        if (data.enabledTools) setEnabledTools(data.enabledTools);
+        if (data.toolCatalog) setToolCatalog(data.toolCatalog);
       });
 
     // Fetch available models from AI Gateway
@@ -118,6 +131,7 @@ export default function SettingsPage() {
         classifierModel,
         classifierPrompt: classifierPrompt || "",
         agentModel,
+        enabledTools,
       }),
     });
     setSavingSettings(false);
@@ -328,6 +342,71 @@ export default function SettingsPage() {
                 ))}
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Agent Tools */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 dark:text-white">Agent Tools</h2>
+        <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Choose which tools the delegation agent can use when working on tasks.
+          </p>
+          {(() => {
+            const categories = [
+              { key: "task-mgmt", label: "Task Management", icon: "📋" },
+              { key: "output", label: "Output", icon: "📄" },
+              { key: "development", label: "Development", icon: "🔧" },
+              { key: "research", label: "Research", icon: "🔍" },
+              { key: "communication", label: "Communication", icon: "✉️" },
+            ];
+            return categories.map((cat) => {
+              const tools = toolCatalog.filter((t) => t.category === cat.key);
+              if (tools.length === 0) return null;
+              return (
+                <div key={cat.key} className="mb-4 last:mb-0">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                    {cat.icon} {cat.label}
+                  </h3>
+                  <div className="space-y-2">
+                    {tools.map((t) => (
+                      <label
+                        key={t.id}
+                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                          t.locked
+                            ? "border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-70"
+                            : enabledTools.includes(t.id)
+                              ? "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20"
+                              : "border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 mr-3">
+                          <span className="text-sm font-medium dark:text-white">{t.name}</span>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{t.description}</p>
+                        </div>
+                        {t.locked ? (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Always on</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={enabledTools.includes(t.id)}
+                            onChange={(e) => {
+                              setEnabledTools((prev) =>
+                                e.target.checked
+                                  ? [...prev, t.id]
+                                  : prev.filter((id) => id !== t.id)
+                              );
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       </section>
 

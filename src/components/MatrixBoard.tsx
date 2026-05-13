@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import ContactPicker from "./ContactPicker";
 import AgentChat from "./AgentChat";
+import AgentSidebar from "./AgentSidebar";
+import ArtifactViewer from "./ArtifactViewer";
 
 type Task = {
   id: string;
@@ -74,6 +76,8 @@ export default function MatrixBoard() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [viewingArtifactId, setViewingArtifactId] = useState<string | null>(null);
 
   const toggleTaskSelection = (taskId: string) => {
     setSelectedTaskIds((prev) => {
@@ -602,7 +606,8 @@ export default function MatrixBoard() {
   }
 
   return (
-    <div className="p-4 max-w-4xl mx-auto">
+    <>
+    <div className={`p-4 max-w-4xl mx-auto transition-all duration-300 ${sidebarOpen ? "mr-[360px]" : ""}`}>
       {/* Matrix Selector */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <div className="relative">
@@ -1453,6 +1458,35 @@ export default function MatrixBoard() {
         </div>
       )}
     </div>
+
+    <AgentSidebar
+      open={sidebarOpen}
+      onToggle={() => setSidebarOpen((p) => !p)}
+      onViewArtifact={(id) => setViewingArtifactId(id)}
+      onOpenChat={(taskId) => {
+        // Find the task and open its agent chat
+        const t = tasks.find((t) => t.id === taskId);
+        if (t) {
+          fetch(`/api/tasks/${taskId}/delegate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "agent" }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.conversationId) {
+                setAgentChat({ conversationId: data.conversationId, taskId, taskTitle: t.title });
+              }
+            });
+        }
+      }}
+    />
+
+    <ArtifactViewer
+      artifactId={viewingArtifactId}
+      onClose={() => setViewingArtifactId(null)}
+    />
+    </>
   );
 }
 

@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateUser } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
+import { TOOL_CATALOG, getDefaultToolIds } from "@/lib/agents/tool-registry";
 
-// GET /api/settings — get user classifier settings
+// GET /api/settings — get user settings
 export async function GET() {
   const user = await getOrCreateUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let enabledTools: string[];
+  try {
+    enabledTools = user.enabledTools ? JSON.parse(user.enabledTools) : getDefaultToolIds();
+  } catch {
+    enabledTools = getDefaultToolIds();
+  }
 
   return NextResponse.json({
     classifierModel: user.classifierModel || "openai/gpt-4o-mini",
     classifierPrompt: user.classifierPrompt || "",
     agentModel: user.agentModel || "openai/gpt-4o",
+    enabledTools,
+    toolCatalog: TOOL_CATALOG,
   });
 }
 
@@ -43,6 +53,12 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Invalid agent model" }, { status: 400 });
     }
     data.agentModel = model;
+  }
+
+  if ("enabledTools" in body && Array.isArray(body.enabledTools)) {
+    const validIds = new Set(TOOL_CATALOG.map((t) => t.id));
+    const filtered = (body.enabledTools as string[]).filter((id) => validIds.has(id));
+    data.enabledTools = JSON.stringify(filtered);
   }
 
   await prisma.user.update({
