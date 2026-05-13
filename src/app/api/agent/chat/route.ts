@@ -38,16 +38,16 @@ export async function POST(req: NextRequest) {
     select: { title: true, description: true, externalUrl: true },
   });
 
-  // Get user's model preference
+  // Get user's model preference for agents
   const userSettings = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { classifierModel: true },
+    select: { agentModel: true },
   });
 
   const agent = createDelegationAgent(
     user.id,
     taskId,
-    userSettings?.classifierModel || undefined
+    userSettings?.agentModel || undefined
   );
 
   // Persist the latest user message

@@ -11,6 +11,21 @@ const resend = process.env.RESEND_API_KEY
 export function createDelegationAgent(userId: string, taskId: string, modelId?: string) {
   const model = modelId || "openai/gpt-4o";
 
+  // Wrapper to ensure tool outputs are always strings (required by OpenAI Responses API)
+  const stringTool = <T extends z.ZodType>(opts: {
+    description: string;
+    inputSchema: T;
+    execute: (input: z.infer<T>) => Promise<unknown>;
+  }) =>
+    tool({
+      description: opts.description,
+      inputSchema: opts.inputSchema,
+      execute: async (input: z.infer<T>) => {
+        const result = await opts.execute(input);
+        return JSON.stringify(result);
+      },
+    });
+
   return new ToolLoopAgent({
     model: gateway(model),
     instructions: `You are a task delegation assistant for an Eisenhower Matrix productivity app called Iketrix.
@@ -23,7 +38,7 @@ Your job is to help the user clarify and execute a delegated task. You should:
 
 You have access to the user's task context and can perform actions on their behalf. Always confirm before sending emails to external people.`,
     tools: {
-      getTaskContext: tool({
+      getTaskContext: stringTool({
         description: "Get the full details of the task being delegated, including its classification, clarification history, and source info.",
         inputSchema: z.object({}),
         execute: async () => {
@@ -51,7 +66,7 @@ You have access to the user's task context and can perform actions on their beha
         },
       }),
 
-      createSubtask: tool({
+      createSubtask: stringTool({
         description: "Create a new subtask on the user's board. Use this to break down the delegated task into actionable items.",
         inputSchema: z.object({
           title: z.string().describe("Title of the subtask"),
@@ -80,7 +95,7 @@ You have access to the user's task context and can perform actions on their beha
         },
       }),
 
-      createGitHubIssue: tool({
+      createGitHubIssue: stringTool({
         description: "Create a GitHub issue on one of the user's connected repositories.",
         inputSchema: z.object({
           repo: z.string().describe("Repository name in 'owner/repo' format"),
@@ -118,7 +133,7 @@ You have access to the user's task context and can perform actions on their beha
         },
       }),
 
-      sendEmail: tool({
+      sendEmail: stringTool({
         description: "Send an email to someone. Use this to delegate tasks via email or notify someone about a task.",
         inputSchema: z.object({
           to: z.string().email().describe("Recipient email address"),
@@ -143,7 +158,7 @@ You have access to the user's task context and can perform actions on their beha
         },
       }),
 
-      updateTask: tool({
+      updateTask: stringTool({
         description: "Update the original task's title or description with enriched details based on the conversation.",
         inputSchema: z.object({
           title: z.string().optional().describe("New title for the task"),
@@ -166,7 +181,7 @@ You have access to the user's task context and can perform actions on their beha
         },
       }),
 
-      markTaskComplete: tool({
+      markTaskComplete: stringTool({
         description: "Mark the delegated task as completed after all actions have been taken.",
         inputSchema: z.object({
           summary: z.string().describe("Brief summary of what was accomplished"),

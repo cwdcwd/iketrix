@@ -10,6 +10,7 @@ export async function GET() {
   return NextResponse.json({
     classifierModel: user.classifierModel || "openai/gpt-4o-mini",
     classifierPrompt: user.classifierPrompt || "",
+    agentModel: user.agentModel || "openai/gpt-4o",
   });
 }
 
@@ -34,6 +35,14 @@ export async function PATCH(req: NextRequest) {
     // Allow empty string to reset to default, cap at 4000 chars
     const prompt = typeof body.classifierPrompt === "string" ? body.classifierPrompt.slice(0, 4000) : "";
     data.classifierPrompt = prompt || null;
+  }
+
+  if ("agentModel" in body && typeof body.agentModel === "string") {
+    const model = body.agentModel.trim();
+    if (!model || model.length > 200) {
+      return NextResponse.json({ error: "Invalid agent model" }, { status: 400 });
+    }
+    data.agentModel = model;
   }
 
   await prisma.user.update({

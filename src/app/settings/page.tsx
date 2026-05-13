@@ -35,6 +35,7 @@ export default function SettingsPage() {
   // Classifier settings
   const [classifierModel, setClassifierModel] = useState("openai/gpt-4o-mini");
   const [classifierPrompt, setClassifierPrompt] = useState("");
+  const [agentModel, setAgentModel] = useState("openai/gpt-4o");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [availableModels, setAvailableModels] = useState<GatewayModel[]>([]);
@@ -61,6 +62,7 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.classifierModel) setClassifierModel(data.classifierModel);
         if (data.classifierPrompt) setClassifierPrompt(data.classifierPrompt);
+        if (data.agentModel) setAgentModel(data.agentModel);
       });
 
     // Fetch available models from AI Gateway
@@ -115,6 +117,7 @@ export default function SettingsPage() {
       body: JSON.stringify({
         classifierModel,
         classifierPrompt: classifierPrompt || "",
+        agentModel,
       }),
     });
     setSavingSettings(false);
@@ -273,6 +276,56 @@ export default function SettingsPage() {
                   No models match &ldquo;{modelFilter}&rdquo;
                 </p>
               )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Classifier Prompt */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 dark:text-white">Agent Model</h2>
+        <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Choose which AI model powers the delegation agent for task conversations.
+          </p>
+          {agentModel && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800">
+              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                Current: {availableModels.find((m) => m.id === agentModel)?.name || agentModel}
+              </span>
+              <span className="text-xs text-purple-500 dark:text-purple-400 ml-2">{agentModel}</span>
+            </div>
+          )}
+          {loadingModels ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">Loading models...</p>
+          ) : (
+            <div className="max-h-[200px] overflow-y-auto space-y-1">
+              {availableModels
+                .filter((m) =>
+                  !modelFilter ||
+                  m.name.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                  m.id.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                  m.provider.toLowerCase().includes(modelFilter.toLowerCase())
+                )
+                .map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setAgentModel(m.id)}
+                    className={`w-full px-3 py-2 rounded-lg border text-left text-sm cursor-pointer transition-colors ${
+                      agentModel === m.id
+                        ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                        : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">{m.provider}</span>
+                    {m.contextWindow && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 float-right">
+                        {Math.round(m.contextWindow / 1000)}k ctx
+                      </span>
+                    )}
+                  </button>
+                ))}
             </div>
           )}
         </div>
