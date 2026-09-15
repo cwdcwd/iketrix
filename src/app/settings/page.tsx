@@ -16,6 +16,15 @@ type GatewayModel = {
   contextWindow?: number;
 };
 
+type ToolDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  enabledByDefault: boolean;
+  locked?: boolean;
+};
+
 const DEFAULT_PROMPT = `You are an Eisenhower Matrix classifier. Classify this task into one of four quadrants:
 
 - "do": Important AND Urgent — must be done immediately and personally
@@ -35,11 +44,14 @@ export default function SettingsPage() {
   // Classifier settings
   const [classifierModel, setClassifierModel] = useState("openai/gpt-4o-mini");
   const [classifierPrompt, setClassifierPrompt] = useState("");
+  const [agentModel, setAgentModel] = useState("openai/gpt-4o");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [availableModels, setAvailableModels] = useState<GatewayModel[]>([]);
   const [modelFilter, setModelFilter] = useState("");
   const [loadingModels, setLoadingModels] = useState(true);
+  const [enabledTools, setEnabledTools] = useState<string[]>([]);
+  const [toolCatalog, setToolCatalog] = useState<ToolDefinition[]>([]);
 
   useEffect(() => {
     // Load saved theme
@@ -61,6 +73,9 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.classifierModel) setClassifierModel(data.classifierModel);
         if (data.classifierPrompt) setClassifierPrompt(data.classifierPrompt);
+        if (data.agentModel) setAgentModel(data.agentModel);
+        if (data.enabledTools) setEnabledTools(data.enabledTools);
+        if (data.toolCatalog) setToolCatalog(data.toolCatalog);
       });
 
     // Fetch available models from AI Gateway
@@ -115,6 +130,8 @@ export default function SettingsPage() {
       body: JSON.stringify({
         classifierModel,
         classifierPrompt: classifierPrompt || "",
+        agentModel,
+        enabledTools,
       }),
     });
     setSavingSettings(false);
@@ -280,6 +297,121 @@ export default function SettingsPage() {
 
       {/* Classifier Prompt */}
       <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 dark:text-white">Agent Model</h2>
+        <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Choose which AI model powers the delegation agent for task conversations.
+          </p>
+          {agentModel && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800">
+              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                Current: {availableModels.find((m) => m.id === agentModel)?.name || agentModel}
+              </span>
+              <span className="text-xs text-purple-500 dark:text-purple-400 ml-2">{agentModel}</span>
+            </div>
+          )}
+          {loadingModels ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">Loading models...</p>
+          ) : (
+            <div className="max-h-[200px] overflow-y-auto space-y-1">
+              {availableModels
+                .filter((m) =>
+                  !modelFilter ||
+                  m.name.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                  m.id.toLowerCase().includes(modelFilter.toLowerCase()) ||
+                  m.provider.toLowerCase().includes(modelFilter.toLowerCase())
+                )
+                .map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setAgentModel(m.id)}
+                    className={`w-full px-3 py-2 rounded-lg border text-left text-sm cursor-pointer transition-colors ${
+                      agentModel === m.id
+                        ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                        : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    <span className="font-medium">{m.name}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">{m.provider}</span>
+                    {m.contextWindow && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 float-right">
+                        {Math.round(m.contextWindow / 1000)}k ctx
+                      </span>
+                    )}
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Agent Tools */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4 dark:text-white">Agent Tools</h2>
+        <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Choose which tools the delegation agent can use when working on tasks.
+          </p>
+          {(() => {
+            const categories = [
+              { key: "task-mgmt", label: "Task Management", icon: "📋" },
+              { key: "output", label: "Output", icon: "📄" },
+              { key: "development", label: "Development", icon: "🔧" },
+              { key: "research", label: "Research", icon: "🔍" },
+              { key: "communication", label: "Communication", icon: "✉️" },
+            ];
+            return categories.map((cat) => {
+              const tools = toolCatalog.filter((t) => t.category === cat.key);
+              if (tools.length === 0) return null;
+              return (
+                <div key={cat.key} className="mb-4 last:mb-0">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                    {cat.icon} {cat.label}
+                  </h3>
+                  <div className="space-y-2">
+                    {tools.map((t) => (
+                      <label
+                        key={t.id}
+                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                          t.locked
+                            ? "border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-70"
+                            : enabledTools.includes(t.id)
+                              ? "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20"
+                              : "border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 mr-3">
+                          <span className="text-sm font-medium dark:text-white">{t.name}</span>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{t.description}</p>
+                        </div>
+                        {t.locked ? (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Always on</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={enabledTools.includes(t.id)}
+                            onChange={(e) => {
+                              setEnabledTools((prev) =>
+                                e.target.checked
+                                  ? [...prev, t.id]
+                                  : prev.filter((id) => id !== t.id)
+                              );
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      </section>
+
+      {/* Classifier Prompt */}
+      <section className="mb-8">
         <h2 className="text-lg font-semibold mb-4 dark:text-white">Classifier Prompt</h2>
         <div className="border dark:border-gray-700 rounded-lg p-5 bg-white dark:bg-gray-800">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
@@ -321,6 +453,143 @@ export default function SettingsPage() {
           {savingSettings ? "Saving…" : settingsSaved ? "✓ Saved" : "Save Settings"}
         </button>
       </div>
+
+      {/* Contacts */}
+      <ContactsSection />
     </div>
+  );
+}
+
+function ContactsSection() {
+  const [contacts, setContacts] = useState<Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    linkedUserId: string | null;
+    inviteStatus: string | null;
+    linkedUser: { id: string; name: string | null; email: string } | null;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const fetchContacts = async () => {
+    try {
+      const res = await fetch("/api/contacts");
+      if (res.ok) {
+        const data = await res.json();
+        setContacts(data.contacts);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchContacts(); }, []);
+
+  const addContact = async () => {
+    if (!newEmail.trim()) return;
+    setAdding(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail.trim(), name: newName.trim() || null }),
+      });
+      if (res.ok || res.status === 409) {
+        setNewEmail("");
+        setNewName("");
+        fetchContacts();
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const deleteContact = async (id: string) => {
+    await fetch(`/api/contacts/${id}`, { method: "DELETE" });
+    fetchContacts();
+  };
+
+  const inviteContact = async (id: string) => {
+    await fetch(`/api/contacts/${id}/invite`, { method: "POST" });
+    fetchContacts();
+  };
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-lg font-semibold mb-3 dark:text-white">Contacts</h2>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        Manage contacts you can delegate tasks to. Linked contacts (existing users) will see delegated tasks on their board automatically.
+      </p>
+
+      {/* Add contact form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Name"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          className="border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm w-36"
+        />
+        <input
+          type="email"
+          placeholder="Email"
+          value={newEmail}
+          onChange={(e) => setNewEmail(e.target.value)}
+          className="flex-1 border dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-3 py-2 text-sm"
+        />
+        <button
+          onClick={addContact}
+          disabled={!newEmail.trim() || adding}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer disabled:opacity-50"
+        >
+          {adding ? "Adding..." : "Add"}
+        </button>
+      </div>
+
+      {/* Contact list */}
+      {loading ? (
+        <p className="text-sm text-gray-400">Loading contacts...</p>
+      ) : contacts.length === 0 ? (
+        <p className="text-sm text-gray-400">No contacts yet. Add one above to start delegating.</p>
+      ) : (
+        <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
+          {contacts.map((contact) => (
+            <div key={contact.id} className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700 last:border-b-0">
+              <div>
+                <span className="text-sm font-medium dark:text-white">
+                  {contact.name || contact.email}
+                </span>
+                {contact.name && (
+                  <span className="text-xs text-gray-500 ml-2">{contact.email}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {contact.linkedUser ? (
+                  <span className="text-xs text-green-600">✓ User</span>
+                ) : contact.inviteStatus === "pending" ? (
+                  <span className="text-xs text-yellow-600">⏳ Invited</span>
+                ) : (
+                  <button
+                    onClick={() => inviteContact(contact.id)}
+                    className="text-xs text-blue-600 hover:text-blue-700 cursor-pointer"
+                  >
+                    Invite
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteContact(contact.id)}
+                  className="text-xs text-red-500 hover:text-red-700 cursor-pointer"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

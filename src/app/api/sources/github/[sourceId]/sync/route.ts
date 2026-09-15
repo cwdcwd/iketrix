@@ -151,7 +151,12 @@ export async function POST(
         { status: 200 }
       );
     }
-    throw err;
+    console.error(`[sync] Unhandled error for ${source.name}:`, err);
+    const message = err instanceof Error ? err.message : "Unknown sync error";
+    return NextResponse.json(
+      { error: message, imported: 0, classified: 0, failed: 0, total: 0 },
+      { status: 500 }
+    );
   }
 
   // Also pick up any previously unclassified tasks
