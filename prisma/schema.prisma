@@ -1,6 +1,7 @@
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
+  engineType = "client"
 }
 
 datasource db {
@@ -21,8 +22,8 @@ model User {
   classifierPrompt String?  // Custom system prompt override for classification
   agentModel      String?   // Model used for delegation agent conversations
   enabledTools    String?   // JSON array of enabled tool IDs for the agent (null = defaults)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
   matrices        Matrix[]
   tasks           Task[]
   sources         Source[]
@@ -42,22 +43,22 @@ model Matrix {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   sources         Source[]
   tasks           Task[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Source {
   id              String    @id @default(cuid())
-  type            String    // "github", "jira", "linear", etc.
-  name            String    // e.g., "owner/repo"
-  accessToken     String    // encrypted OAuth token
+  type            String?   // "github", "jira", "linear", etc.
+  name            String?
+  accessToken     String?
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   matrixId        String?
   matrix          Matrix?   @relation(fields: [matrixId], references: [id], onDelete: SetNull)
   tasks           Task[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([userId, type, name])
 }
@@ -68,27 +69,27 @@ model Task {
   description     String?
   sourceId        String?
   source          Source?   @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  externalId      String?   // GitHub issue number, etc.
+  externalId      String?
   externalUrl     String?
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   matrixId        String?
   matrix          Matrix?   @relation(fields: [matrixId], references: [id], onDelete: SetNull)
-  quadrant        String?   // "do", "schedule", "delegate", "delete"
+  quadrant        String?
   status          String    @default("active") // "active", "delegated", "completed", "deleted"
   needsClarification Boolean @default(false)
   pendingQuestion    String?  // LLM's clarifying question
   classification  TaskClassification?
   clarifications  Clarification[]
   overrides       ClassificationOverride[]
-  delegatedTo     String?   // email or identifier of delegatee
+  delegatedTo     String?
   delegatedAt     DateTime?
   delegatedToContactId String?
   delegatedToContact   Contact? @relation(fields: [delegatedToContactId], references: [id], onDelete: SetNull)
   agentConversation    AgentConversation?
   artifacts       Artifact[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([sourceId, externalId])
 }
@@ -96,7 +97,7 @@ model Task {
 model Clarification {
   id        String   @id @default(cuid())
   taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task      Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   question  String
   answer    String
   createdAt DateTime @default(now())
@@ -106,11 +107,11 @@ model TaskClassification {
   id              String    @id @default(cuid())
   taskId          String    @unique
   task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  quadrant        String    // "do", "schedule", "delegate", "delete"
-  reasoning       String    // LLM explanation
-  confidence      Float     // 0-1 score
-  model           String    // which LLM model was used
-  createdAt       DateTime  @default(now())
+  quadrant        String
+  reasoning       String
+  confidence      Float
+  model           String
+  createdAt       DateTime @default(now())
 }
 
 model ClassificationOverride {
@@ -121,16 +122,16 @@ model ClassificationOverride {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   fromQuadrant    String
   toQuadrant      String
-  createdAt       DateTime  @default(now())
+  createdAt       DateTime @default(now())
 }
 
 model ClassifierMemory {
   id              String    @id @default(cuid())
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content         String    // Distilled lesson from user corrections
-  sourceOverrideId String?  // The override that triggered this memory
-  createdAt       DateTime  @default(now())
+  content         String
+  sourceOverrideId String?
+  createdAt       DateTime @default(now())
 }
 
 model Contact {
@@ -144,8 +145,8 @@ model Contact {
   clerkInvitationId String?
   inviteStatus    String?   // "pending" | "accepted"
   delegatedTasks  Task[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([userId, email])
 }
@@ -160,20 +161,20 @@ model AgentConversation {
   summary         String?
   messages        AgentMessage[]
   artifacts       Artifact[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model AgentMessage {
-  id              String    @id @default(cuid())
-  conversationId  String
+  id        String    @id @default(cuid())
+  conversationId String
   conversation    AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role            String    // "user" | "assistant" | "tool"
-  content         String
-  toolName        String?
-  toolArgs        Json?
-  toolResult      Json?
-  createdAt       DateTime  @default(now())
+  role      String
+  content   String
+  toolName  String?
+  toolArgs  Json?
+  toolResult Json?
+  createdAt DateTime @default(now())
 }
 
 model Artifact {
@@ -185,11 +186,11 @@ model Artifact {
   conversationId  String?
   conversation    AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   title           String
-  content         String    // Text content: markdown, code, JSON, etc.
+  content         String
   mimeType        String    @default("text/markdown")
-  language        String?   // Programming language for code artifacts
-  toolName        String?   // Which tool produced this artifact
-  metadata        Json?     // Extra context
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  language        String?
+  toolName        String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
