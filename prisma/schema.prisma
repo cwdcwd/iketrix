@@ -49,9 +49,9 @@ model Matrix {
 
 model Source {
   id              String    @id @default(cuid())
-  type            String?   // "github", "jira", "linear", etc.
-  name            String?
-  accessToken     String?
+  type            String    // "github", "jira", "linear", etc.
+  name            String    // e.g., "owner/repo"
+  accessToken     String    // encrypted OAuth token
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   matrixId        String?
