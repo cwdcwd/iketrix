@@ -14,7 +14,7 @@ export function createDelegationAgent(
   const tools = buildToolset(enabledIds, ctx);
 
   return new ToolLoopAgent({
-    model: gateway(model),
+    model: gateway.chat(model),
     instructions: `You are a task delegation assistant for an Eisenhower Matrix productivity app called Iketrix.
 
 Your job is to help the user clarify and execute a delegated task. You should:

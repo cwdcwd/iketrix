@@ -1,7 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { gateway } from "@/lib/ai-gateway";
 import { Resend } from "resend";
 
 // ---------------------------------------------------------------------------
@@ -319,10 +318,49 @@ const toolFactories: Record<string, ToolFactory> = {
     }),
 
   // ---- research ---------------------------------------------------------
-  web_search: () => {
-    // Provider-executed: OpenAI handles the search server-side
-    return gateway.tools.webSearch();
-  },
+  web_search: () =>
+    stringTool({
+      description: "Search the web for information. Returns a list of relevant results with titles, URLs, and snippets.",
+      inputSchema: z.object({
+        query: z.string().describe("The search query"),
+      }),
+      execute: async ({ query }) => {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10_000);
+          const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+          const res = await fetch(url, {
+            signal: controller.signal,
+            headers: { "User-Agent": "Iketrix-Agent/1.0" },
+          });
+          clearTimeout(timeout);
+          if (!res.ok) return { error: `Search failed: HTTP ${res.status}` };
+          const html = await res.text();
+          // Extract result snippets from DuckDuckGo HTML
+          const results: { title: string; url: string; snippet: string }[] = [];
+          const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/a>/g;
+          let match;
+          while ((match = resultRegex.exec(html)) !== null && results.length < 8) {
+            results.push({
+              title: match[2].trim(),
+              url: decodeURIComponent(match[1].replace(/.*uddg=/, "").replace(/&.*/, "")),
+              snippet: match[3].replace(/<[^>]+>/g, "").trim(),
+            });
+          }
+          if (results.length === 0) {
+            // Fallback: extract any links with snippets
+            const linkRegex = /<a[^>]+class="result__url"[^>]*>([^<]+)<\/a>/g;
+            let linkMatch;
+            while ((linkMatch = linkRegex.exec(html)) !== null && results.length < 5) {
+              results.push({ title: "", url: linkMatch[1].trim(), snippet: "" });
+            }
+          }
+          return { success: true, query, resultCount: results.length, results };
+        } catch (err) {
+          return { error: `Search failed: ${err instanceof Error ? err.message : "unknown error"}` };
+        }
+      },
+    }),
 
   web_fetch: () =>
     stringTool({
