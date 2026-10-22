@@ -4,8 +4,7 @@ import {
   SignInButton,
   SignUpButton,
   UserButton,
-  SignedIn,
-  SignedOut,
+  Show,
 } from "@clerk/nextjs";
 import Link from "next/link";
 import "./globals.css";
@@ -58,7 +57,7 @@ export default function RootLayout({
               />
               <span className="font-bold text-lg">Iketrix</span>
             </Link>
-            <SignedOut>
+            <Show when="signed-out">
               <SignInButton mode="modal">
                 <button className="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white cursor-pointer">
                   Sign In
@@ -69,8 +68,8 @@ export default function RootLayout({
                   Sign Up
                 </button>
               </SignUpButton>
-            </SignedOut>
-            <SignedIn>
+            </Show>
+            <Show when="signed-in">
               <Link
                 href="/settings"
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -78,7 +77,7 @@ export default function RootLayout({
                 ⚙️ Settings
               </Link>
               <UserButton />
-            </SignedIn>
+            </Show>
           </header>
           {children}
         </ClerkProvider>
