@@ -11,13 +11,13 @@
     "postinstall": "prisma generate || true"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.63",
-    "@ai-sdk/react": "^3.0.179",
+    "@ai-sdk/openai": "^4.0.96",
+    "@ai-sdk/react": "^4.0.152",
     "@clerk/nextjs": "^6.12.0",
     "@prisma/adapter-pg": "^6.8.0",
     "@prisma/client": "^6.8.0",
     "@serwist/next": "^9.0.0",
-    "ai": "^6.0.177",
+    "ai": "^7.0.143",
     "next": "^15.5.28",
     "octokit": "^5.0.5",
     "pg": "^8.23.1",
