@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Resend } from "resend";
@@ -137,7 +137,7 @@ export function resolveEnabledIds(userIds: string[] | null): string[] {
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyTool = ReturnType<typeof tool<any, any>>;
+type AnyTool = Tool<any, any>;
 type ToolFactory = (ctx: ToolContext) => AnyTool;
 
 const toolFactories: Record<string, ToolFactory> = {

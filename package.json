@@ -11,14 +11,14 @@
     "postinstall": "prisma generate || true"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.63",
-    "@ai-sdk/react": "^3.0.179",
+    "@ai-sdk/openai": "^4.0.96",
+    "@ai-sdk/react": "^4.0.152",
     "@clerk/nextjs": "^6.12.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "@serwist/next": "^9.0.0",
-    "ai": "^6.0.177",
-    "next": "^15.3.0",
+    "ai": "^7.0.143",
+    "next": "^15.5.28",
     "octokit": "^5.0.5",
     "pg": "^8.23.1",
     "react": "^19.0.0",
@@ -33,11 +33,16 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.3.0",
+    "eslint-config-next": "^15.5.28",
     "postcss": "^8.5.31",
     "prisma": "^7.10.1",
     "serwist": "^9.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.31"
+    }
   }
 }
