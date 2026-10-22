@@ -15,8 +15,8 @@ jobs:
       # Dummy key so Clerk can prerender; not a real credential
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -34,7 +34,7 @@ jobs:
       pull-requests: write
     steps:
       - id: metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
